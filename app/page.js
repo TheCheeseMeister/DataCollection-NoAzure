@@ -1,65 +1,99 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, {useEffect, useState} from 'react';
+import Home from "./components/home";
+import Test from "./components/test";
+import Collection from "./components/collection";
+
+import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+const queryClient = new QueryClient();
+
+export default function Tabs() {
+  const tabs = [
+    { id: "home", label: "Home", content: <Home />},
+    { id: "test", label: "Equipment QA", content: <Test />},
+    { id: "network", label: "Network Collection", content: <Collection />},
+    { id: "process", label: "Processing Checker", content: "Processing"},
+    { id: "qa", label: "QA Review", content: "QA"},
+    { id: "skid", label: "Skid Processing", content: "Skid"},
+  ];
+
+  const [activeTab, setActiveTab] = useState(tabs[0].id);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.js file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <QueryClientProvider client={queryClient}>
+      <div className="bg-gray-400 min-h-screen flex flex-col">
+        {/* Header */}
+        <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
+          <img src='images/njdot_img.png' className="h-14 w-auto" />
+          <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Body */}
+        <div className="flex flex-1 mb-2">
+          {/* Tabs */}
+          <div className="items-start flex flex-col gap-x-10 bg-gray-400">
+            {tabs.map((tab) => (
+              <button className=
+              {
+                `text-black border-2 text-center w-42 h-12 
+                ${activeTab === tab.id ? "bg-blue-200 bold hover:bg-blue-300" : "bg-white hover:bg-gray-300"}`
+              }
+                key={tab.id} 
+                onClick={() => setActiveTab(tab.id)} 
+                style={{
+                  fontWeight: activeTab === tab.id ? "bold" : "normal",
+                }}>
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Content */}
+          <div className="bg-white w-full ml-2 mr-2">
+            {tabs.find(t => t.id === activeTab)?.content}
+          </div>
         </div>
-      </main>
-    </div>
+      </div>
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }
+
+
+/*"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "./utils/supabase/client";
+
+export default function Home() {
+  const [data, setData] = useState([]);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+  const fetchData = async () => {
+    console.log("FETCH START");
+
+    const { data, error } = await supabase
+      .from("tblCertificateVerificationResult")
+      .select("*");
+
+    setData(data);
+    console.log("DONE", { data, error });
+  };
+
+  fetchData();
+}, []);
+
+  return(
+    <div>
+      <h1>Supabase Results</h1>
+
+      {error && <p>Error: {error}</p>}
+
+      <pre>{JSON.stringify(data, null, 2)}</pre>
+    </div>
+  );
+}*/

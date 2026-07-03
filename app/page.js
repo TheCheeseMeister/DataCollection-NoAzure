@@ -27,7 +27,7 @@ export default function Tabs() {
       <div className="bg-gray-400 min-h-screen flex flex-col">
         {/* Header */}
         <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
-          <img src='DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
+          <img src='/DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
           <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
         </div>
 

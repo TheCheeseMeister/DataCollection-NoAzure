@@ -1,7 +1,7 @@
-import { getEquipmentTables, insertNewEquipment, updateExistingEquipment } from "../utils/supabase/queries";
+import { getEquipmentTables, insertNewEquipment, updateExistingEquipment, insertNewIssue, updateExistingIssue } from "../utils/supabase/queries";
 import { useQuery } from '@tanstack/react-query'
 
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useState, useMemo} from 'react';
 
 export default function test() {
     const tabs = [
@@ -448,7 +448,7 @@ function DataIssuesForm({ lookups }) {
     const [reportedDate, setReportedDate] = useState("");
     const [statusFilter, setStatusFilter] = useState("");
 
-    const filteredIssueList = lookups.issueList.filter(item => {
+    const filteredIssueList = lookups?.issueList.filter(item => {
         const itemDate = item["ReportedDate"]?.split("T")[0];
 
         const matchDate = !reportedDate || itemDate === reportedDate;
@@ -460,36 +460,36 @@ function DataIssuesForm({ lookups }) {
     });
 
     const uniqueReportedBy = [
-        ...new Set(lookups.issueList
+        ...new Set(lookups?.issueList
             .filter(item => item.ReportedBy !== null)
             .map(item => item["ReportedBy"]))
     ];
 
     const uniqueReportedDate = [
-        ...new Set(lookups.issueList
+        ...new Set(lookups?.issueList
             .map(item => item["ReportedDate"].split("T")[0]))
     ];
 
     const uniqueCategories = [
-        ...new Set(lookups.issueCategories
-            .filter(item => item.Discontinued === false)
+        ...new Set(lookups?.issueCategories
+            .filter(item => item.Discontinued === 0)
             .map(item => item["Category"]))
     ];
 
     const uniqueFollowUps = [
-        ...new Set(lookups.issueCategories
+        ...new Set(lookups?.issueCategories
             .filter(item => item.FollowUp !== null)
             .map(item => item["FollowUp"]))
     ];
 
     const assignedUserOptions = useMemo(() => {
-        return [
-            ...new Set([
-            ...lookups.users.map(u => u.UserName),
-            assigned
-            ])
-        ].filter(Boolean);
-    }, [lookups.users, assigned]);
+        const users = lookups?.users ?? [];
+
+        return [...new Set([
+            ...users.map(u => u.UserName),
+            assigned,
+        ])].filter(Boolean);
+    }, [lookups?.users, assigned]);
 
     const handleSubmit = async () => {
         const payload = {
@@ -520,6 +520,10 @@ function DataIssuesForm({ lookups }) {
         // } catch (err) {
         //     console.error("Submit error:", err);
         // }
+
+        const res = recordType === "New Record" ? await insertNewIssue(payload) : await updateExistingIssue(payload);
+
+        alert(res.message);
     };
 
     return (
@@ -563,7 +567,7 @@ function DataIssuesForm({ lookups }) {
                             const IssuesID = e.target.value;
                             setIssueID(IssuesID);
 
-                            const record = lookups.issueList.find(
+                            const record = lookups?.issueList.find(
                                 item => item.IssuesID === IssuesID
                             );
 
@@ -635,7 +639,7 @@ function DataIssuesForm({ lookups }) {
                             }} className={`w-full border p-2 rounded bg-white`}>
                                 <option value="">-- Select --</option>
 
-                                {lookups.status.map((item, index) => (
+                                {lookups?.status.map((item, index) => (
                                     <option key={`status-${index}`} value={item["Status"]}>
                                         {item["Status"]}
                                     </option>
@@ -691,7 +695,7 @@ function DataIssuesForm({ lookups }) {
                     }} className={`w-full border p-2 rounded bg-white`}>
                         <option value="">-- Select --</option>
 
-                        {recordType === "New Record" ? lookups.users.map((item, index) => (
+                        {recordType === "New Record" ? lookups?.users.map((item, index) => (
                             <option key={`userName-${index}`} value={item.UserName}>
                                 {item.UserName}
                             </option>
@@ -731,7 +735,7 @@ function DataIssuesForm({ lookups }) {
                     }} className={`w-full border p-2 rounded bg-white ${recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`} disabled={recordType === "Existing Record" ? true : false}>
                         <option value="">-- Select --</option>
 
-                        {recordType === "New Record" ? lookups.collectionTask.map((item, index) => (
+                        {recordType === "New Record" ? lookups?.collectionTask.map((item, index) => (
                             <option key={`task-${index}`} value={item["Collection Task Type"]}>
                                 {item["Collection Task Type"]}
                             </option>
@@ -749,7 +753,7 @@ function DataIssuesForm({ lookups }) {
                     }} className={`w-full border p-2 rounded bg-white`}>
                         <option value="">-- Select --</option>
 
-                        {lookups.status.map((item, index) => (
+                        {lookups?.status.map((item, index) => (
                             <option key={`status-${index}`} value={item["Status"]}>
                                 {item["Status"]}
                             </option>
@@ -774,9 +778,9 @@ function DataIssuesForm({ lookups }) {
                     }} className={`w-full border p-2 rounded bg-white ${recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`} disabled={recordType === "Existing Record" ? true : false}>
                         <option value="">-- Select --</option>
 
-                        {recordType === "New Record" ? lookups.issueEquipmentName.map((item, index) => (
-                            <option key={`equipmentName-${index}`} value={item.equipmentName}>
-                                {item.equipmentName}
+                        {recordType === "New Record" ? lookups?.issueEquipmentName.map((item, index) => (
+                            <option key={`equipmentName-${index}`} value={item["Equipment Name"]}>
+                                {item["Equipment Name"]}
                             </option>
                         )) :
                         <option>{equipmentName}</option>}
@@ -792,7 +796,7 @@ function DataIssuesForm({ lookups }) {
                     }} className={`w-full border p-2 rounded bg-white ${recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`} disabled={recordType === "Existing Record" ? true : false}>
                         <option value="">-- Select --</option>
 
-                        {recordType === "New Record" ? lookups.priority.map((item, index) => (
+                        {recordType === "New Record" ? lookups?.priority.map((item, index) => (
                             <option key={`priority-${index}`} value={item.Priority}>
                                 {item.Priority}
                             </option>

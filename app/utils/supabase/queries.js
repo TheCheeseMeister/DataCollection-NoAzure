@@ -12,6 +12,7 @@ export async function getLookups() {
   };
 }
 
+// Equipment QA Queries
 export async function getEquipmentTables() {
   const [verification, equipmentType, equipmentName, certType, users, certNames, QACerts,
         status, priority, issueCategories, issueEquipmentName, collectionTask, issueList] = await Promise.all([
@@ -98,6 +99,11 @@ export async function updateExistingEquipment(payload) {
   }
 }
 
+/**
+ * Paginates the querying of Certifications to bypass 1000 row limit in supabase.
+ * 
+ * @returns Full list of Certifications
+ */
 async function fetchAllCertifications() {
   let all = [];
   let from = 0;
@@ -110,7 +116,6 @@ async function fetchAllCertifications() {
       .range(from, from + pageSize - 1);
 
     if (error) throw error;
-
     if (!data || data.length === 0) break;
 
     all = [...all, ...data];
@@ -123,6 +128,11 @@ async function fetchAllCertifications() {
   return all;
 }
 
+/**
+ * Generates the next QA ID based on the max ID for the current year in tblCertifications.
+ * 
+ * @returns Next QA ID
+ */
 async function generateQAID() {
   const year = new Date().getFullYear();
 
@@ -132,6 +142,78 @@ async function generateQAID() {
     .gte('"Created On"', `${year}-01-01`)
     .lt('"Created On"', `${year + 1}-01-01`);
 
+  const nextNum = (data?.length + 1)
+
+  return `${year}_${nextNum}`;
+}
+
+// Data Issue Queries
+export async function insertNewIssue(payload) {
+  const IssueID = await generateIssueID();
+
+  const rows = {
+    "IssuesID": IssueID,
+    "AssignedTo": payload["assigned"],
+    "Comments": payload["comments"],
+    "Priority": payload["priority"],
+    "Category": payload["category"],
+    "Data Collection Task": payload["collectionTask"],
+    "Status": payload["status"],
+    "ReportedDate": new Date(),
+    "ClosedDate": payload["closedDate"],
+    "Equipment Name": payload["equipmentName"],
+    "ReportedBy": "Eli",
+    "Follow Up": payload["followUp"]
+  }
+
+  const { data, error } = await supabase
+    .from("tblDataCollectionIssuesList")
+    .insert([rows])
+    .select();
+  
+  if (error) {
+    console.error("Insert error: ", error);
+    throw error;
+  } else {
+    return { success: true, message: "Record inserted successfully" };
+  }
+}
+
+export async function updateExistingIssue(payload) {
+  const { data, error } = await supabase
+    .from("tblDataCollectionIssuesList")
+    .update({
+      "AssignedTo": payload["assignedTo"],
+      "Comments": payload["comments"],
+      "Status": payload["status"],
+      "ClosedDate": payload["closedDate"],
+      "Follow Up": payload["followUp"]
+    })
+    .eq("IssuesID", payload["IssueID"])
+    .select();
+  
+  if (error) {
+    console.error("Update error: ", error);
+    throw error;
+  } else {
+    return { success: true, message: "Record updated sucessfully" };
+  }
+}
+
+/**
+ * Generates the next Issue ID based on the max ID for the current year in tblDataCollectionIssuesList.
+ * 
+ * @returns Next Issue ID
+ */
+async function generateIssueID() {
+  const year = new Date().getFullYear();
+
+  const { data, error } = await supabase
+    .from("tblDataCollectionIssuesList")
+    .select("*")
+    .gte('"ReportedDate"', `${year}-01-01`)
+    .lt('"ReportedDate"', `${year + 1}-01-01`);
+  
   const nextNum = (data?.length + 1)
 
   return `${year}_${nextNum}`;

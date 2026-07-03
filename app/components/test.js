@@ -1,3 +1,5 @@
+import { getEquipmentTables } from "../utils/supabase/queries";
+
 import React, {useEffect, useState} from 'react';
 
 export default function test() {
@@ -24,13 +26,12 @@ export default function test() {
     });
 
     useEffect(() => {
-        fetch(`${API}/api/verificationResult/lookup`)
-            .then(res => res.json())
-            .then(data => {
-                setLookups(data)
-                console.log(data)
-            })
-            .catch(err => console.error(err));
+        async function load() {
+            const data = await getEquipmentTables();
+            setLookups(data)
+        }
+
+        load();
     }, []);
 
     return (
@@ -266,8 +267,8 @@ function EquipmentQAForm({ lookups }) {
                                 <option value="">-- Select --</option>
 
                                 {lookups.verification.map((item, index) => (
-                                    <option key={`verification-${index}`} value={item.verificationResult}>
-                                        {item.verificationResult}
+                                    <option key={`verification-${index}`} value={item["Verification Result"]}>
+                                        {item["Verification Result"]}
                                     </option>
                                 ))}
                             </select>
@@ -292,8 +293,8 @@ function EquipmentQAForm({ lookups }) {
                             <option>-- Select --</option>
 
                             {lookups.certType.map((item, index) => (
-                                <option key={`cert-${index}`} value={item.certificationType}>
-                                    {item.certificationType}
+                                <option key={`cert-${index}`} value={item["Certification Type"]}>
+                                    {item["Certification Type"]}
                                 </option>
                             ))}
                         </select>
@@ -303,13 +304,13 @@ function EquipmentQAForm({ lookups }) {
                         <label className="block text-sm mb-1 font-bold">
                             Equipment Type
                         </label>
-                        <select value={equipmentType} onChange={(e) => setEquipmentType(e.target.value)} disabled={(certificationType === "Equipment") ? false : (recordType === "New Record") ? false : true} 
+                        <select value={equipmentType} onChange={(e) => setEquipmentType(e.target.value)} disabled={(certificationType !== "Equipment" && recordType === "New Record") || (recordType === "Existing Record")} 
                         className={`w-full border p-2 rounded bg-white ${certificationType === "" || certificationType === "-- Select --" || certificationType === "Personnel" || recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}>
                             <option value="">-- Select --</option>
 
                             {(recordType === "New Record") ? lookups.equipmentType.map((item, index) => (
-                                <option key={`equipmentType-${index}`} value={item.equipmentType}>
-                                    {item.equipmentType}
+                                <option key={`equipmentType-${index}`} value={item["Equipment Type"]}>
+                                    {item["Equipment Type"]}
                                 </option>
                             )) :
                             <option>{equipmentType}</option>}
@@ -336,10 +337,10 @@ function EquipmentQAForm({ lookups }) {
 
                                 return(
                                     item["Certification Type"] === certificationType && 
-                                    item.Discontinued === false &&
+                                    item["Discontinued"] === 0 &&
                                     (
                                         certificationType !== "Equipment" || equipmentType === "-- Select --" || equipmentType === "Personnel" ||
-                                        item[equipmentType] === true
+                                        item[equipmentType] === 1
                                     )
                                 );
                             })
@@ -364,13 +365,13 @@ function EquipmentQAForm({ lookups }) {
                             
                             {recordType === "Existing Record" ? <option>{equipmentName}</option> : certificationType === "Equipment" ? 
                             lookups.equipmentName.map((item, index) => (
-                                <option key={`equipmentName-${index}`} value={item.equipmentName}>
-                                    {item.equipmentName}
+                                <option key={`equipmentName-${index}`} value={item["Equipment Name"]}>
+                                    {item["Equipment Name"]}
                                 </option>
                             ))
                             : lookups.users.map((item, index) => (
-                                <option key={`userName-${index}`} value={item.UserName}>
-                                    {item.UserName}
+                                <option key={`userName-${index}`} value={item["UserName"]}>
+                                    {item["UserName"]}
                                 </option>
                             ))}
                         </select>
@@ -384,8 +385,8 @@ function EquipmentQAForm({ lookups }) {
                             <option value="">-- Select --</option>
 
                             {lookups.verification.map((item, index) => (
-                                <option key={`verification-${index}`} value={item.verificationResult}>
-                                    {item.verificationResult}
+                                <option key={`verification-${index}`} value={item["Verification Result"]}>
+                                    {item["Verification Result"]}
                                 </option>
                             ))}
                         </select>

@@ -1,4 +1,5 @@
-import { getEquipmentTables } from "../utils/supabase/queries";
+import { getEquipmentTables, insertNewEquipment, updateExistingEquipment } from "../utils/supabase/queries";
+import { useQuery } from '@tanstack/react-query'
 
 import React, {useEffect, useState} from 'react';
 
@@ -9,30 +10,39 @@ export default function test() {
     ];
     
     const [activeTab, setActiveTab] = useState(tabs[0].id);
-    const [lookups, setLookups] = useState({
-        verification: [],
-        equipmentType: [],
-        equipmentName: [],
-        certType: [],
-        users: [],
-        certNames: [],
-        QACerts: [],
-        status: [],
-        priority: [],
-        issueCategories: [],
-        issueEquipmentName: [],
-        collectionTask: [],
-        issueList: []
+    // const [lookups, setLookups] = useState({
+    //     verification: [],
+    //     equipmentType: [],
+    //     equipmentName: [],
+    //     certType: [],
+    //     users: [],
+    //     certNames: [],
+    //     QACerts: [],
+    //     status: [],
+    //     priority: [],
+    //     issueCategories: [],
+    //     issueEquipmentName: [],
+    //     collectionTask: [],
+    //     issueList: []
+    // });
+
+    const {
+        data: lookups,
+        isLoading,
+        isError
+    } = useQuery({
+        queryKey: ['equipmentTables'],
+        queryFn: getEquipmentTables
     });
 
-    useEffect(() => {
-        async function load() {
-            const data = await getEquipmentTables();
-            setLookups(data)
-        }
+    // useEffect(() => {
+    //     async function load() {
+    //         const data = await getEquipmentTables();
+    //         setLookups(data)
+    //     }
 
-        load();
-    }, []);
+    //     load();
+    // }, []);
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
@@ -76,7 +86,7 @@ function EquipmentQAForm({ lookups }) {
     const [comments, setComments] = useState("");
     const [QAID, setQAID] = useState("");
 
-    const filteredQACerts = lookups.QACerts.filter(item => {
+    const filteredQACerts = lookups?.QACerts.filter(item => {
         const itemDate = item["Created On"]?.split("T")[0];
 
         const matchDate = !dateRecord || itemDate === dateRecord;
@@ -88,16 +98,15 @@ function EquipmentQAForm({ lookups }) {
     });
 
     const uniqueCreatedBy = [
-        ...new Set(lookups.QACerts.map(item => item["Created By"]))
+        ...new Set(lookups?.QACerts.map(item => item["Created By"]))
     ];
 
     const uniqueCreatedOn = [
-        ...new Set(lookups.QACerts.map(item => item["Created On"].split("T")[0]))
+        ...new Set(lookups?.QACerts.map(item => item["Created On"].split("T")[0]))
     ];
 
     const handleSubmit = async () => {
         const payload = {
-            recordType,
             certificationType,
             equipmentName,
             equipmentType,
@@ -108,20 +117,24 @@ function EquipmentQAForm({ lookups }) {
             Existing_QAID: QAID
         };
         
-        try {
-            const res = await fetch(`${API}/api/verificationResult/upload-qa`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
+        // try {
+        //     const res = await fetch(`${API}/api/verificationResult/upload-qa`, {
+        //         method: "POST",
+        //         headers: {
+        //             "Content-Type": "application/json"
+        //         },
+        //         body: JSON.stringify(payload)
+        //     });
 
-            const data = await res.json();
-            alert(data.message);
-        } catch (err) {
-            console.error("Submit error:", err);
-        }
+        //     const data = await res.json();
+        //     alert(data.message);
+        // } catch (err) {
+        //     console.error("Submit error:", err);
+        // }
+        
+        const res = recordType === "New Record" ? await insertNewEquipment(payload) : await updateExistingEquipment(payload);
+
+        alert(res.message);
     };
 
     return(
@@ -164,7 +177,7 @@ function EquipmentQAForm({ lookups }) {
                             const QAID = e.target.value;
                             setQAID(e.target.value);
 
-                            const record = lookups.QACerts.find(
+                            const record = lookups?.QACerts.find(
                                 item => item.QAID === QAID
                             );
 
@@ -266,7 +279,7 @@ function EquipmentQAForm({ lookups }) {
                             }} className={`w-full border p-2 rounded bg-white`}>
                                 <option value="">-- Select --</option>
 
-                                {lookups.verification.map((item, index) => (
+                                {lookups?.verification.map((item, index) => (
                                     <option key={`verification-${index}`} value={item["Verification Result"]}>
                                         {item["Verification Result"]}
                                     </option>
@@ -292,7 +305,7 @@ function EquipmentQAForm({ lookups }) {
                         }} className={`w-full border p-2 rounded bg-white ${(recordType === "New Record") ? "" : "opacity-50 cursor-not-allowed"}`} disabled={recordType === "New Record" ? false : true}>
                             <option>-- Select --</option>
 
-                            {lookups.certType.map((item, index) => (
+                            {lookups?.certType.map((item, index) => (
                                 <option key={`cert-${index}`} value={item["Certification Type"]}>
                                     {item["Certification Type"]}
                                 </option>
@@ -308,7 +321,7 @@ function EquipmentQAForm({ lookups }) {
                         className={`w-full border p-2 rounded bg-white ${certificationType === "" || certificationType === "-- Select --" || certificationType === "Personnel" || recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}>
                             <option value="">-- Select --</option>
 
-                            {(recordType === "New Record") ? lookups.equipmentType.map((item, index) => (
+                            {(recordType === "New Record") ? lookups?.equipmentType.map((item, index) => (
                                 <option key={`equipmentType-${index}`} value={item["Equipment Type"]}>
                                     {item["Equipment Type"]}
                                 </option>
@@ -331,7 +344,7 @@ function EquipmentQAForm({ lookups }) {
                             className={`w-full border p-2 rounded bg-white h-54.5 ${recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}
                             disabled={(recordType === "New Record") ? false : true}
                         > {/*where [Certification Type] = 'Equipment' And Discontinued = 0;*/}
-                            {lookups.certNames
+                            {lookups?.certNames
                             .filter(item => {
                                 if (certificationType === "" || certificationType === "-- Select --") return false;
 
@@ -364,12 +377,12 @@ function EquipmentQAForm({ lookups }) {
                             <option value="">-- Select --</option>
                             
                             {recordType === "Existing Record" ? <option>{equipmentName}</option> : certificationType === "Equipment" ? 
-                            lookups.equipmentName.map((item, index) => (
+                            lookups?.equipmentName.map((item, index) => (
                                 <option key={`equipmentName-${index}`} value={item["Equipment Name"]}>
                                     {item["Equipment Name"]}
                                 </option>
                             ))
-                            : lookups.users.map((item, index) => (
+                            : lookups?.users.map((item, index) => (
                                 <option key={`userName-${index}`} value={item["UserName"]}>
                                     {item["UserName"]}
                                 </option>
@@ -384,7 +397,7 @@ function EquipmentQAForm({ lookups }) {
                         <select value={verificationResult} onChange={(e) => setVerificationResult(e.target.value)} className="w-full border p-2 rounded bg-white">
                             <option value="">-- Select --</option>
 
-                            {lookups.verification.map((item, index) => (
+                            {lookups?.verification.map((item, index) => (
                                 <option key={`verification-${index}`} value={item["Verification Result"]}>
                                     {item["Verification Result"]}
                                 </option>
@@ -493,20 +506,20 @@ function DataIssuesForm({ lookups }) {
             IssueID
         };
         
-        try {
-            const res = await fetch(`${API}/api/verificationResult/upload-issue`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(payload)
-            });
+        // try {
+        //     const res = await fetch(`${API}/api/verificationResult/upload-issue`, {
+        //         method: "POST",
+        //         headers: {
+        //             "Content-Type": "application/json"
+        //         },
+        //         body: JSON.stringify(payload)
+        //     });
 
-            const data = await res.json();
-            alert(data.message);
-        } catch (err) {
-            console.error("Submit error:", err);
-        }
+        //     const data = await res.json();
+        //     alert(data.message);
+        // } catch (err) {
+        //     console.error("Submit error:", err);
+        // }
     };
 
     return (

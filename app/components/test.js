@@ -156,7 +156,7 @@ function EquipmentQAForm({ lookups }) {
                     setDateRecord("")
                     setVerificationFilter("")
                 }}>
-                    <option>New Record</option>e
+                    <option>New Record</option>
                     <option>Existing Record</option>
                 </select>
             </div>

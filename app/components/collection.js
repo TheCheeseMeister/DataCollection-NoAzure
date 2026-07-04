@@ -1,6 +1,7 @@
-import { getLookups } from "../utils/supabase/queries";
+import { getStatusInputTables, insertNewStatus, updateExistingStatus } from "../utils/supabase/collection-queries";
 
-import React, {useEffect, useState} from 'react';
+import React, {useMemo, useEffect, useState} from 'react';
+import { useQuery } from '@tanstack/react-query'
 
 export default function collection() {
     const tabs = [
@@ -41,15 +42,15 @@ export default function collection() {
 }
 
 function StatusInputForm() {
-  const [formData, setFormData] = useState({
+  const initialFormData = {
     recordType: "New Record",
-    collectionYear: "",
+    collectionYear: "2025",
     sets: "",
 
     SDIFileName: "",
     setsReceived: "",
     dateReceived: "",
-    dataCollected: "",
+    dateCollected: "",
     assignedTo: "",
     totalMiles: "",
     imageCheck: "",
@@ -73,19 +74,108 @@ function StatusInputForm() {
     pavementTemp: "",
     truckNum: "Pathways 2",
     comments: "",
-    collectionIssues: ""
-  });
+    collectionIssues: "",
+  };
+
+  const [formData, setFormData] = useState(initialFormData);
 
   const handleField = (event) => {
-    const { name, value } = event.target;
+    const { name, value, type, checked } = event.target;
+    
+    if (name === "recordType") {
+      setFormData({
+        ...initialFormData,
+        recordType: value
+      });
+      return;
+    } else if (name === "sets") {
+      const selectedRow = inputTables?.collectionLog?.find(
+        (item) => item.SetNum === value
+      );
+
+      if (!selectedRow) {
+        setFormData((prevData) => ({
+          ...prevData,
+          [name]: type === "checkbox" ? checked : value
+        }));
+        return;
+      };
+
+      setFormData((prev) => ({
+        ...prev,
+        sets: value,
+        
+        SDIFileName: selectedRow["SDIFileName"] ?? "",
+        setsReceived: selectedRow["SetNum"] ?? "",
+        dateReceived: selectedRow["DateReceived"] ?? "",
+        dateCollected: selectedRow["DateCollected"] ?? "",
+        assignedTo: selectedRow["AssignedTo"] ?? "",
+        totalMiles: selectedRow["MilesCollected"] ?? "",
+        imageCheck: selectedRow["FLImageCheck"] ?? "",
+        rawStart: selectedRow["RawFilesProcessedStart"] ?? "",
+        rawEnd: selectedRow["RawFilesProcessedEnd"] ?? "",
+        offsetFixed: selectedRow["BEOffsetFixed"] ?? "",
+        weather: selectedRow["Weather"] ?? "",
+        airTemp: selectedRow["AirTemperature"] ?? "",
+
+        autocrackStart: selectedRow["AutocrackStart"] ?? "",
+        autocrackEnd: selectedRow["AutocrackEnd"] ?? "",
+        autoclassStart: selectedRow["AutoclassStart"] ?? "",
+        autoclassEnd: selectedRow["AutoclassEnd"] ?? "",
+        tenthMileReport: selectedRow["TenthMileReport"] ?? "",
+        pathviewVersion: selectedRow["PathviewVersion"] ?? "",
+        dateBackedUp: selectedRow["DataBackedup"] ?? "",
+        drivesFormatted: selectedRow["DrivesFormatted"] ?? "",
+        missingSets: selectedRow["MissingSets"] ?? "",
+        retestRequired: selectedRow["RetestRequired"] === true ||
+                selectedRow["RetestRequired"] === 1 ||
+                selectedRow["RetestRequired"] === "true",
+        retestSets: selectedRow["RetestSets"] ?? "",
+        pavementTemp: selectedRow["PavementTemperature"] ?? "",
+        comments: selectedRow["Comments"] ?? "",
+        collectionIssues: selectedRow["CollectionIssues"] ?? "",
+        truckNum: selectedRow["TruckNum"] ?? ""
+      }));
+      return;
+    }
 
     setFormData((prevData) => ({
       ...prevData,
-      [name]: value
+      [name]: type === "checkbox" ? checked : value
     }));
 
-    console.log(`${name}: ${value}`)
+    // if (type === 'checkbox') {
+    //   console.log(`${name}: ${checked}`)
+    // } else {
+    //   console.log(`${name}: ${value}`)
+    // }
   }
+
+  const {
+    data: inputTables,
+    isLoading,
+    isError
+  } = useQuery({
+    queryKey: ['inputTables'],
+    queryFn: getStatusInputTables
+  });
+
+  const assignedUserOptions = useMemo(() => {
+      const users = inputTables?.users ?? [];
+
+      return [...new Set([
+          ...users.map(u => u.UserName),
+          formData.assignedTo,
+      ])].filter(Boolean);
+  }, [inputTables?.users, formData.assignedTo]);
+  
+  const handleSubmit = async() => {
+    const payload = { ...formData };
+
+    const res = formData.recordType === "New Record" ? await insertNewStatus(payload) : await updateExistingStatus(payload);
+
+    alert(res.message);
+  };
 
   return(
     <form className='text-black p-6 w-full max-w-6xl mx-auto'>
@@ -104,13 +194,13 @@ function StatusInputForm() {
           <label className="block text-sm mb-1 font-bold">
               Collection Year
           </label>
-          <select className="w-full border p-2 rounded bg-white" onChange={(e) => {
-          }}>
-              <option>2025</option>
-              <option>2024</option>
-              <option>2023</option>
-              <option>2022</option>
-              <option>2021</option>
+          <select name="collectionYear" value={formData.collectionYear} onChange={handleField} className="w-full border p-2 rounded bg-white">
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="2023">2023</option>
+              <option value="2022">2022</option>
+              <option value="2021">2021</option>
           </select>
         </div>
 
@@ -118,10 +208,18 @@ function StatusInputForm() {
           <label className="block text-sm mb-1 font-bold">
               Sets
           </label>
-          <select className="w-full border p-2 rounded bg-white" onChange={(e) => {
-          }}>
-              <option>Set 1</option>
-              <option>Set 2</option>
+          <select name="sets" value={formData.sets} onChange={handleField} className={`w-full border p-2 rounded bg-white ${formData.recordType === "New Record" ? "opacity-50 cursor-not-allowed" : ""}`} disabled={formData.recordType === "New Record"}>
+              <option value="">-- Select --</option>
+              
+              {inputTables?.collectionLog
+                .filter((item) => item["CollectionYear"] === Number(formData.collectionYear))
+                .sort((a, b) => a["SetNum"].localeCompare(b["SetNum"]))
+                .map((item, index) => (
+                  <option key={`set-${index}`} value={item["SetNum"]}>
+                    {item["SetNum"]}
+                  </option>
+                ))
+              }
           </select>
         </div>
       </div>
@@ -134,49 +232,46 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   SDI File Name *
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input name="SDIFileName" value={formData.SDIFileName} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Sets Received *
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input name="setsReceived" value={formData.setsReceived} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Date Received *
+                  Date Received
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="dateReceived" value={formData.dateReceived} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Data Collected *
+                  Date Collected
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="dateCollected" value={formData.dateCollected} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Assigned To
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
+              <select name="assignedTo" value={formData.assignedTo} onChange={handleField} className={`w-71 border p-2 rounded bg-white`}>
                   <option value="">-- Select --</option>
+                  
+                  {formData.recordType === "New Record" ? inputTables?.users.map((item, index) => (
+                    <option key={`userName-${index}`} value={item.UserName}>
+                      {item.UserName}
+                    </option>
+                  )) : assignedUserOptions.map((item, index) => (
+                    <option key={`userName-${index}`} value={item}>
+                      {item}
+                    </option>
+                  ))}
               </select>
             </div>
 
@@ -184,59 +279,46 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   Total Miles
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input name="totalMiles" value={formData.totalMiles} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   First/Last Image Check
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="imageCheck" value={formData.imageCheck} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Raw Files Processed Start Date
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="rawStart" value={formData.rawStart} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Raw Files Processed End Date
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="rawEnd" value={formData.rawEnd} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Beginning/Ending Offset Fixed
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="offsetFixed" value={formData.offsetFixed} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Weather
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
+              <select name="weather" value={formData.weather} onChange={handleField} className={`w-71 border p-2 rounded bg-white`}>
                   <option value="">-- Select --</option>
+                  <option value="Sunny">Sunny</option>
+                  <option value="Cloudy">Cloudy</option>
+                  <option value="Overcast">Overcast</option>
               </select>
             </div>
 
@@ -244,10 +326,7 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   Air Temperature
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input name="airTemp" value={formData.airTemp} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
           </div>
             
@@ -257,46 +336,42 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   Autocrack Run Start Date
               </label>
-              <input type="date" className={`w-71 border p-2 rounded bg-white h-9`} />
+              <input type="date" name="autocrackStart" value={formData.autocrackStart} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Autocrack Run End Date
               </label>
-              <input type="date" className={`w-71 border p-2 rounded bg-white h-9`} />
+              <input type="date" name="autocrackEnd" value={formData.autocrackEnd} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Autoclass Run Start Date
-              </label>
-              <input type="date" className={`w-71 border p-2 rounded bg-white h-9`} />
+              </label> 
+              <input type="date" name="autoclassStart" value={formData.autoclassStart} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Autoclass Run End Date
               </label>
-              <input type="date" className={`w-71 border p-2 rounded bg-white h-9`} />
+              <input type="date" name="autoclassEnd" value={formData.autoclassEnd} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   10th Mile Report Generated
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="date" name="tenthMileReport" value={formData.tenthMileReport} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Pathview Version
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
+              <select name="pathviewVersion" value={formData.pathviewVersion} onChange={handleField} className={`w-71 border p-2 rounded bg-white`}>
                   <option value="">-- Select --</option>
                   <option value="1514">1514</option>
                   <option value="1409">1409</option>
@@ -311,24 +386,21 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   Date Backed Up
               </label>
-              <input type="date" className={`w-71 border p-2 rounded bg-white h-9`} />
+              <input type="date" name="dateBackedUp" value={formData.dateBackedUp} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Drives Formatted
               </label>
-              <input type="date" className={`w-71 border p-2 rounded bg-white h-9`} />
+              <input type="date" name="drivesFormatted" value={formData.drivesFormatted} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Missing Sets
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input name="missingSets" value={formData.missingSets} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
             
             <div className="mb-3.5">
@@ -338,6 +410,9 @@ function StatusInputForm() {
 
               <input
                 type="checkbox"
+                name="retestRequired"
+                checked={formData.retestRequired}
+                onChange={handleField}
                 className="h-4 w-4 accent-blue-600 mt-2"
               />
             </div>
@@ -346,20 +421,14 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   Retest Sets
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input type="text" name="retestSets" value={formData.retestSets} onChange={handleField} className={`w-71 border p-2 rounded bg-white ${formData.retestRequired === false ? "opacity-50 cursor-not-allowed" : ""}`} disabled={formData.retestRequired === false} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
                   Pavement Temperature
               </label>
-              <select onChange={(e) => {
-              }} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-              </select>
+              <input name="pavementTemp" value={formData.pavementTemp} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
           </div>
 
@@ -410,20 +479,20 @@ function StatusInputForm() {
               <label className="block text-sm mb-1 font-bold">
                   Comments
               </label>
-              <textarea className="w-full border p-2 rounded h-32 bg-white" />
+              <textarea name="comments" value={formData.comments} onChange={handleField} className="w-full border p-2 rounded h-32 bg-white" />
             </div>
 
             <div className="w-128">
               <label className="block text-sm mb-1 font-bold">
                   Collection Issues
               </label>
-              <textarea className="w-full border p-2 rounded h-32 bg-white" />
+              <textarea name="collectionIssues" value={formData.collectionIssues} onChange={handleField} className="w-full border p-2 rounded h-32 bg-white" />
             </div>
 
             {/* Button */}
             <div className="mt-8 flex justify-center">
-                <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">
-                  Add New
+                <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600" onClick={handleSubmit}>
+                  {formData.recordType === "New Record" ? "Add New" : "Update Existing"}
                 </button>
             </div>
           </div>

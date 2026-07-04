@@ -42,7 +42,50 @@ export default function collection() {
 
 function StatusInputForm() {
   const [formData, setFormData] = useState({
+    recordType: "New Record",
+    collectionYear: "",
+    sets: "",
+
+    SDIFileName: "",
+    setsReceived: "",
+    dateReceived: "",
+    dataCollected: "",
+    assignedTo: "",
+    totalMiles: "",
+    imageCheck: "",
+    rawStart: "",
+    rawEnd: "",
+    offsetFixed: "",
+    weather: "",
+    airTemp: "",
+
+    autocrackStart: "",
+    autocrackEnd: "",
+    autoclassStart: "",
+    autoclassEnd: "",
+    tenthMileReport: "",
+    pathviewVersion: "",
+    dateBackedUp: "",
+    drivesFormatted: "",
+    missingSets: "",
+    retestRequired: false,
+    retestSets: "",
+    pavementTemp: "",
+    truckNum: "Pathways 2",
+    comments: "",
+    collectionIssues: ""
   });
+
+  const handleField = (event) => {
+    const { name, value } = event.target;
+
+    setFormData((prevData) => ({
+      ...prevData,
+      [name]: value
+    }));
+
+    console.log(`${name}: ${value}`)
+  }
 
   return(
     <form className='text-black p-6 w-full max-w-6xl mx-auto'>
@@ -51,10 +94,9 @@ function StatusInputForm() {
           <label className="block text-sm mb-1 font-bold">
               Record Type
           </label>
-          <select className="w-full border p-2 rounded bg-white" onChange={(e) => {
-          }}>
-              <option>New Record</option>
-              <option>Existing Record</option>
+          <select name="recordType" value={formData.recordType} onChange={handleField} className="w-full border p-2 rounded bg-white">
+              <option value="New Record">New Record</option>
+              <option value="Existing Record">Existing Record</option>
           </select>
         </div>
 
@@ -85,7 +127,7 @@ function StatusInputForm() {
       </div>
 
       <div className="flex justify-center">
-        <div className="grid grid-cols-2 gap-6 w-fit">
+        <div className="grid grid-cols-3 gap-6 w-fit">
           {/* Left Column */}
           <div className="space-y-2">
             <div>
@@ -209,7 +251,7 @@ function StatusInputForm() {
             </div>
           </div>
             
-          {/* Left Column */}
+          {/* Middle Column */}
           <div className="space-y-2">
             <div>
               <label className="block text-sm mb-1 font-bold">
@@ -321,35 +363,68 @@ function StatusInputForm() {
             </div>
           </div>
 
-          <div className="w-64">
-            <label className="block text-sm mb-1 font-bold">
-              Truck Num
-            </label>
-
-            <div className="border border-gray-400 rounded p-3 flex gap-6 w-fit">
-              <label className="flex items-center gap-2 whitespace-nowrap">
-                <input
-                  type="radio"
-                  name="pavement"
-                />
-                Pathways 1
+          {/* Right Column */}
+          <div className="space-y-2">
+            <div className="w-64">
+              <label className="block text-sm mb-1 font-bold">
+                Truck Num
               </label>
 
-              <label className="flex items-center gap-2 whitespace-nowrap">
-                <input
-                  type="radio"
-                  name="pavement"
-                />
-                Pathways 2
-              </label>
+              <div className="border border-gray-400 rounded p-3 flex gap-6 w-fit">
+                <label className="flex items-center gap-2 whitespace-nowrap">
+                  <input
+                    type="radio"
+                    name="truckNum"
+                    value="Pathways 1"
+                    checked={formData.truckNum === "Pathways 1"}
+                    onChange={handleField}
+                  />
+                  Pathways 1
+                </label>
 
-              <label className="flex items-center gap-2 whitespace-nowrap">
-                <input
-                  type="radio"
-                  name="pavement"
-                />
-                Other
+                <label className="flex items-center gap-2 whitespace-nowrap">
+                  <input
+                    type="radio"
+                    name="truckNum"
+                    value="Pathways 2"
+                    checked={formData.truckNum === "Pathways 2"}
+                    onChange={handleField}
+                  />
+                  Pathways 2
+                </label>
+
+                <label className="flex items-center gap-2 whitespace-nowrap">
+                  <input
+                    type="radio"
+                    name="truckNum"
+                    value="Other"
+                    checked={formData.truckNum === "Other"}
+                    onChange={handleField}
+                  />
+                  Other
+                </label>
+              </div>
+            </div>
+
+            <div className="w-128">
+              <label className="block text-sm mb-1 font-bold">
+                  Comments
               </label>
+              <textarea className="w-full border p-2 rounded h-32 bg-white" />
+            </div>
+
+            <div className="w-128">
+              <label className="block text-sm mb-1 font-bold">
+                  Collection Issues
+              </label>
+              <textarea className="w-full border p-2 rounded h-32 bg-white" />
+            </div>
+
+            {/* Button */}
+            <div className="mt-8 flex justify-center">
+                <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600">
+                  Add New
+                </button>
             </div>
           </div>
         </div>

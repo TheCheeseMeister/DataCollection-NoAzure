@@ -8,6 +8,11 @@ import Collection from "./components/collection";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
+import { AllCommunityModule } from 'ag-grid-community';
+import { AgGridProvider } from 'ag-grid-react';
+
+const modules = [AllCommunityModule];
+
 const queryClient = new QueryClient();
 
 export default function Tabs() {
@@ -23,42 +28,44 @@ export default function Tabs() {
   const [activeTab, setActiveTab] = useState(tabs[0].id);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <div className="bg-gray-400 min-h-screen flex flex-col">
-        {/* Header */}
-        <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
-          <img src='/DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
-          <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
-        </div>
-
-        {/* Body */}
-        <div className="flex flex-1 mb-2">
-          {/* Tabs */}
-          <div className="items-start flex flex-col gap-x-10 bg-gray-400">
-            {tabs.map((tab) => (
-              <button className=
-              {
-                `text-black border-2 text-center w-42 h-12 
-                ${activeTab === tab.id ? "bg-blue-200 bold hover:bg-blue-300" : "bg-white hover:bg-gray-300"}`
-              }
-                key={tab.id} 
-                onClick={() => setActiveTab(tab.id)} 
-                style={{
-                  fontWeight: activeTab === tab.id ? "bold" : "normal",
-                }}>
-                {tab.label}
-              </button>
-            ))}
+    <AgGridProvider modules={modules}>
+      <QueryClientProvider client={queryClient}>
+        <div className="bg-gray-400 min-h-screen flex flex-col">
+          {/* Header */}
+          <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
+            <img src='/DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
+            <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
           </div>
 
-          {/* Content */}
-          <div className="bg-white w-full ml-2 mr-2">
-            {tabs.find(t => t.id === activeTab)?.content}
+          {/* Body */}
+          <div className="flex flex-1 mb-2">
+            {/* Tabs */}
+            <div className="items-start flex flex-col gap-x-10 bg-gray-400">
+              {tabs.map((tab) => (
+                <button className=
+                {
+                  `text-black border-2 text-center w-42 h-12 
+                  ${activeTab === tab.id ? "bg-blue-200 bold hover:bg-blue-300" : "bg-white hover:bg-gray-300"}`
+                }
+                  key={tab.id} 
+                  onClick={() => setActiveTab(tab.id)} 
+                  style={{
+                    fontWeight: activeTab === tab.id ? "bold" : "normal",
+                  }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Content */}
+            <div className="bg-white w-full ml-2 mr-2">
+              {tabs.find(t => t.id === activeTab)?.content}
+            </div>
           </div>
         </div>
-      </div>
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
+        <ReactQueryDevtools initialIsOpen={false} />
+      </QueryClientProvider>
+    </AgGridProvider>
   );
 }
 

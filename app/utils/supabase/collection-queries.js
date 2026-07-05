@@ -1,5 +1,7 @@
 import { supabase } from "./client";
 
+// Status Input Queries
+
 export async function getStatusInputTables() {
     const [users, collectionLog] = await Promise.all([
         supabase.from("tblUsers").select("UserName").order("UserName", { ascending: true }),
@@ -101,5 +103,72 @@ export async function updateExistingStatus(payload) {
         throw error;
     } else {
         return { success: true, message: "Record inserted successfully" };
+    }
+}
+
+// Collection Status Queries
+
+export async function getCollectionStatus() {
+    const [collectionStatus, collectionLog] = await Promise.all([
+        supabase.from("tblRoadSections").select("*"),
+        supabase.from("tblCollectionLog").select("*").eq("CollectionYear", 2025)
+    ]);
+
+    return {
+        collectionStatus: collectionStatus.data,
+        collectionLog: collectionLog.data,
+    }
+}
+
+export async function getReruns() {
+    const [reruns] = await Promise.all([
+        supabase.from("tblReruns").select("*"),
+    ]);
+
+    return {
+        reruns: reruns.data
+    }
+}
+
+export async function updateReruns(rows) {
+  const inserts = rows.filter(row => !row.ID);
+  const updates = rows.filter(row => row.ID);
+
+  const cleanInserts = inserts.map(({ ID, ...rest }) => rest);
+
+  const insertPromise = cleanInserts.length
+    ? supabase.from("tblReruns").insert(cleanInserts)
+    : Promise.resolve();
+
+  const updatePromise = updates.length
+    ? Promise.all(
+        updates.map(row =>
+          supabase
+            .from("tblReruns")
+            .update(row)
+            .eq("ID", row.ID)
+        )
+      )
+    : Promise.resolve();
+
+  const [insertResult, updateResult] = await Promise.all([
+    insertPromise,
+    updatePromise,
+  ]);
+
+  return { success: true, message: "Changes saved successfully" };
+}
+
+export async function updateDeleted(deletedIds) {
+    const { data, error } = await supabase
+        .from("tblReruns")
+        .delete()
+        .in("ID", deletedIds);
+    
+    if (error) {
+        console.error("Insert error: ", error);
+        throw error;
+    } else {
+        return { success: true };
     }
 }

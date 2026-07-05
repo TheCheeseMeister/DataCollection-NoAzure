@@ -1,13 +1,17 @@
-import { getStatusInputTables, insertNewStatus, updateExistingStatus } from "../utils/supabase/collection-queries";
+import { getStatusInputTables, insertNewStatus, updateExistingStatus, getCollectionStatus, getReruns, updateReruns, updateDeleted } from "../utils/supabase/collection-queries";
+import { exportToPDF } from "../utils/pdf-export";
 
-import React, {useMemo, useEffect, useState} from 'react';
+import React, {useRef, useMemo, useEffect, useState} from 'react';
 import { useQuery } from '@tanstack/react-query'
+import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table'
+
+import { AgGridReact } from "ag-grid-react";
 
 export default function collection() {
     const tabs = [
-        { id: "statusInput", label: "Set Status / Input"},
-        { id: "collection", label: "Collection Status"},
-        { id: "reruns", label: "Reruns"}
+        { id: "statusInput", label: "Network Collection Tracker"},
+        { id: "collection", label: "Network Collection Status"},
+        { id: "reruns", label: "Network Rerun Tracker"}
     ];
 
     const [activeTab, setActiveTab] = useState(tabs[0].id);
@@ -503,13 +507,270 @@ function StatusInputForm() {
 }
 
 function CollectionForm() {
+  // Fetch table
+  const {
+    data: collectionStatus,
+    isLoading,
+    isError
+  } = useQuery({
+    queryKey: ['collectionStatus'],
+    queryFn: getCollectionStatus,
+  });
+
+  const [rowData, setRowData] = useState([]);
+
+  useEffect(() => {
+    if (collectionStatus?.collectionStatus) {
+      setRowData(collectionStatus.collectionStatus);
+    }
+  }, [collectionStatus]);
+
+  const percentCollected = useMemo(() => {
+    const log = collectionStatus?.collectionLog ?? [];
+
+    const collected = log.reduce(
+      (sum, r) => sum + (r.MilesCollected ?? 0),
+      0
+    );
+
+    return (collected / 5039.31).toFixed(3) * 100
+  }, [collectionStatus]);
+
+  const percentProcessed = useMemo(() => {
+    const log = (collectionStatus?.collectionLog ?? [])
+    .filter(r => r.TenthMileReport != null);
+
+    const collected = log.reduce(
+      (sum, r) => sum + (r.MilesCollected ?? 0),
+      0
+    );
+
+    return (collected / 5039.31).toFixed(3) * 100
+  }, [collectionStatus]);
+  
+  const [colDefs, setColDefs] = useState([
+    { field: "Rte"},
+    { field: "Dir" },
+    { field: "MPStart" },
+    { field: "MPEnd" },
+    { field: "CollectedMiles" },
+    { field: "PercentCollected", valueFormatter: (params) => `${(params.value * 100).toFixed(2)}%` },
+    { field: "MilesMissing" },
+    { field: "Sets" },
+    { field: "NumOfSets" },
+  ]);
+
+  const defaultColDef = useMemo(() => ({
+    filter: true,
+    editable: true,
+  }))
+
   return(
-    <div>Collection</div>
+    <div className="flex flex-col items-center justify-center min-h-[90vh] gap-4">
+      {/* Warning label */}
+      <div className="text-sm font-semibold text-red-600 bg-white p-1">
+        Percentages below may be over 100% due to re-collected sections
+      </div>
+
+      <div className="flex gap-8">
+        <div className="flex items-center gap-2">
+          <label className="block text-sm mb-1 font-bold text-black ">Percent Collected of Network</label>
+          <span className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black flex items-center justify-left">
+            {`${percentCollected} %`}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="block text-sm mb-1 font-bold text-black">Percent Processed of Network</label>
+          <span className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black flex items-center justify-left">
+            {`${percentProcessed} %`}
+          </span>
+        </div>
+      </div>
+
+      <div className="h-[800px] w-3/4">
+        <AgGridReact 
+          rowData={rowData} 
+          pagination={true} 
+          columnDefs={colDefs} 
+          defaultColDef={defaultColDef}
+          onCellValueChanged={(params) => {
+            setRowData((prev) => 
+              prev.map((row, i) => 
+                i === params.node.rowIndex ? params.data : row
+              )
+            );
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
 function RerunsForm() {
+  const addRow = () => {
+    const newRow = {
+      Route: "",
+      Direction: "",
+      MPStart: 0,
+      MPEnd: 0,
+
+      Reason: "",
+      RecollectionSetNum: "",
+
+      CollectionYear: Number(selectedYear),
+
+      EnteredBy: null,
+      EnteredOn: null,
+
+      ModifiedBy: null,
+      ModifiedOn: null,
+    };
+
+    setRowData((prev) => [...prev, newRow]);
+  };
+
+  const [deletedIds, setDeletedIds] = useState([]);
+
+  const removeRow = (rowToRemove) => {
+    if (rowToRemove.ID) {
+      setDeletedIds((prev) => [...prev, rowToRemove.ID]);
+    }
+
+    setRowData((prev) =>
+      prev.filter((row) => row !== rowToRemove)
+    );
+  };
+
+  // Fetch table
+  const {
+    data: reruns,
+    refetch,
+    isLoading,
+    isError
+  } = useQuery({
+    queryKey: ['reruns'],
+    queryFn: getReruns,
+  });
+
+  const [rowData, setRowData] = useState([{}]);
+
+  useEffect(() => {
+    if (reruns?.reruns) {
+      setRowData(reruns.reruns);
+    }
+  }, [reruns]);
+
+  const [colDefs, setColDefs] = useState([
+    { field: "Route"},
+    { field: "Direction" },
+    { field: "MPStart" },
+    { field: "MPEnd" },
+    { field: "Reason" },
+    { field: "RecollectionSetNum" },
+    {
+      headerName: "Remove",
+      field: "Remove",
+      sortable: false,
+      filter: false,
+      cellRenderer: (params) => {
+        return (
+          <button
+            className="bg-red-500 hover:bg-red-700 text-white px-2 h-9 rounded"
+            onClick={() => {
+              removeRow(params.data);
+            }}
+          >
+            X
+          </button>
+        );
+      }
+    }
+  ]);
+
+  const defaultColDef = useMemo(() => ({
+    filter: true,
+    editable: true,
+  }))
+
+  const [selectedYear, setSelectedYear] = useState("2025");
+  const [totalRemaining, setTotalRemaining] = useState("");
+
+  const filteredRowData = useMemo(() => {
+    if (!rowData) return [];
+
+    return rowData.filter(
+      (row) => String(row.CollectionYear) === String(selectedYear)
+    );
+  }, [rowData, selectedYear]);
+
+  const handleSave = async () => {
+    const res = await updateReruns(rowData, deletedIds);
+
+    if (deletedIds.length > 0) {
+      await updateDeleted(deletedIds);
+    }
+
+    alert(res.message);
+
+    await refetch();
+  };
+
   return(
-    <div>Reruns</div>
+    <div className="flex flex-col items-start justify-center min-h-[90vh] gap-4">
+      <div className="flex">
+        <div className="flex items-center gap-2 ml-75">
+          <label className="block text-m mb-1 font-bold text-black">Collection Year:</label>
+          <select value={selectedYear} onChange={(e) => setSelectedYear(e.target.value)} className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black">
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 ml-4">
+          <label className="block text-m mb-1 font-bold text-black">Total Remaining Rerun Mileage:</label>
+          <input value={totalRemaining} onChange={(e) => setTotalRemaining(e.target.value)} className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black" />
+        </div>
+
+        <div className="flex ml-227">
+          <div className="flex justify-center">
+              <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center" onClick={addRow}>
+                Add Row
+              </button>
+          </div>
+          <div className="flex justify-center">
+              <button type="button" className="ml-4 bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center" onClick={handleSave}>
+                Save Changes
+              </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="h-[800px] w-3/4 mx-auto">
+        <AgGridReact 
+          rowData={filteredRowData} 
+          pagination={false} 
+          columnDefs={colDefs} 
+          defaultColDef={defaultColDef}
+          onCellValueChanged={(params) => {
+            setRowData((prev) => 
+              prev.map((row, i) => 
+                i === params.node.rowIndex ? params.data : row
+              )
+            );
+          }}
+        />
+      </div>
+
+      {/* Button */}
+      <div className="mt-4 ml-482 flex justify-center">
+          <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600" onClick={() => exportToPDF(filteredRowData, colDefs)}>
+            Export to PDF
+          </button>
+      </div>
+    </div>
   );
 }

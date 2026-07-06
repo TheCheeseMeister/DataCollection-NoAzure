@@ -4,6 +4,7 @@ import React, {useEffect, useState} from 'react';
 import Home from "./components/home";
 import Test from "./components/test";
 import Collection from "./components/collection";
+import QAReview from "./components/qareview";
 
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
@@ -21,7 +22,7 @@ export default function Tabs() {
     { id: "test", label: "Equipment QA", content: <Test />},
     { id: "network", label: "Network Collection", content: <Collection />},
     { id: "process", label: "Processing Checker", content: "Processing"},
-    { id: "qa", label: "QA Review", content: "QA"},
+    { id: "qa", label: "QA Review", content: <QAReview />},
     { id: "skid", label: "Skid Processing", content: "Skid"},
   ];
 

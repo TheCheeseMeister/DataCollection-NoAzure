@@ -50,9 +50,35 @@ export async function getReportsData() {
         distressFrom += pageSize;
     }
 
+    // Miles Reviewed
+    const { data: milesReviewed, milesError } = await supabase
+        .from("qryMilesReviewed")
+        .select("*");
+
+    if (milesError) throw milesError;
+
     return {
         reviewActions: actionsAll,
         assignedReviews,
-        distressReviews: distressAll
+        distressReviews: distressAll,
+        milesReviewed
     };
+}
+
+export async function getUserMilesBreakdown(DataYear) {
+    const { data, error } = await supabase
+        .rpc('get_user_miles', { p_year: DataYear });
+    
+    if (error) throw error;
+
+    return data;
+}
+
+export async function getDetailedReport(DataYear) {
+    const { data, error } = await supabase
+        .rpc('get_qa_review_report', { p_year: DataYear });
+    
+    if (error) throw error;
+
+    return data;
 }

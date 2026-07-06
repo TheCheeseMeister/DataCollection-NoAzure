@@ -1,5 +1,6 @@
 import { supabase } from "./client";
 
+// QA Reports
 export async function getReportsData() {
     // Review Actions
     let actionsAll = [];
@@ -8,9 +9,9 @@ export async function getReportsData() {
 
     while (true) {
         const { data, error } = await supabase
-        .from("qryReviewAction")
-        .select("*")
-        .range(actionsFrom, actionsFrom + pageSize - 1);
+            .from("qryReviewAction")
+            .select("*")
+            .range(actionsFrom, actionsFrom + pageSize - 1);
 
         if (error) throw error;
         if (!data || data.length === 0) break;
@@ -35,10 +36,10 @@ export async function getReportsData() {
 
     while (true) {
         const { data, error } = await supabase
-        .from("qryDistressReviews")
-        .select("*")
-        .neq("Pattern", "UNKNOWN")
-        .range(distressFrom, distressFrom + pageSize - 1);
+            .from("qryDistressReviews")
+            .select("*")
+            .neq("Pattern", "UNKNOWN")
+            .range(distressFrom, distressFrom + pageSize - 1);
 
         if (error) throw error;
         if (!data || data.length === 0) break;
@@ -68,7 +69,7 @@ export async function getReportsData() {
 export async function getUserMilesBreakdown(DataYear) {
     const { data, error } = await supabase
         .rpc('get_user_miles', { p_year: DataYear });
-    
+
     if (error) throw error;
 
     return data;
@@ -77,8 +78,170 @@ export async function getUserMilesBreakdown(DataYear) {
 export async function getDetailedReport(DataYear) {
     const { data, error } = await supabase
         .rpc('get_qa_review_report', { p_year: DataYear });
-    
+
     if (error) throw error;
 
     return data;
+}
+
+// QA Assignments
+export async function getAssignmentData() {
+    // Get matching users (unit + region) and their assigned miles. Currently defaults to unit PD and region C since there's no login.
+    const { data: matchingUsers } = await supabase
+        .from("tblUsers")
+        .select("UserID, UserName")
+        .eq("activeUser", 1)
+        .eq("QAReviewer", 1)
+        .eq("Unit", "PD")
+        .eq("Region", "C");
+
+    const { data: assignments } = await supabase
+        .from("tblQASections")
+        .select("AssignedReviewer, Miles")
+        .eq("ReviewStatus", "Pending");
+
+    const mileTotals = assignments.reduce((acc, row) => {
+        acc[row.AssignedReviewer] =
+            (acc[row.AssignedReviewer] || 0) + Number(row.Miles || 0);
+        return acc;
+    }, {});
+
+    const reviewers = matchingUsers.map(user => ({
+        ...user,
+        miles: mileTotals[user.UserID] || 0,
+    }));
+
+    // Gets sections not currently assigned and creates total list.
+    const { data: sections } = await supabase
+        .from("tblQASections")
+        .select(`
+            Miles,
+            SectionID,
+            AssignedReviewer,
+            Region,
+            ReasonCode,
+            tblReasonLookup!inner(
+            AssignedUnit
+            )
+        `)
+        .is("AssignedReviewer", null)
+        .eq("ReviewStatus", "Pending")
+        .eq("tblReasonLookup.AssignedUnit", "PD")
+        .eq("Region", "C");
+
+    const totals = {
+        noDistress: 0,
+        highIRI: 0,
+        sdiChange: 0,
+        paveType: 0,
+        lowSDI: 0,
+        resurfList: 0,
+        highRut: 0,
+        presList: 0,
+        transCracking: 0,
+        IRIChange: 0,
+    };
+
+    sections.forEach(({ ReasonCode, Miles }) => {
+        const miles = Number(Miles) || 0;
+
+        switch (ReasonCode) {
+            case 1: totals.noDistress += miles; break;
+            case 2: totals.highIRI += miles; break;
+            case 3: totals.sdiChange += miles; break;
+            case 4: totals.paveType += miles; break;
+            case 5: totals.lowSDI += miles; break;
+            case 6: totals.resurfList += miles; break;
+            case 7: totals.highRut += miles; break;
+            case 8: totals.presList += miles; break;
+            case 9: totals.sdiChange += miles; break;
+            case 10: totals.lowSDI += miles; break;
+            case 11: totals.transCracking += miles; break;
+            case 12: totals.IRIChange += miles; break;
+        }
+    });
+
+    return {
+        reviewers,
+        totals
+    };
+}
+
+export async function assignMiles(selectedReviewers, sectionsToAssign) {
+    // Get the actual sections that need assignment
+    const { data: sections, error } = await supabase
+        .from("tblQASections")
+        .select(`
+        *,
+        tblReasonLookup!inner(*)
+    `)
+        .is("AssignedReviewer", null)
+        .eq("tblReasonLookup.AssignedUnit", "PD")
+        .eq("Region", "C")
+        .order("Miles", { ascending: false });
+
+    if (error) throw error;
+
+    if (!sections.length) {
+        throw new Error("No sections to assign");
+    }
+
+    // Copy reviewers so we can track mileage
+    const reviewers = selectedReviewers.map(r => ({
+        ...r,
+        AssignedMiles: r.AssignedMiles ?? 0
+    }));
+
+    const updates = [];
+
+    // Assign each section to reviewer with lowest mileage
+    for (const section of sections) {
+        const reviewer = reviewers.reduce((lowest, current) =>
+            current.AssignedMiles < lowest.AssignedMiles
+                ? current
+                : lowest
+        );
+
+        // Add this section's miles to reviewer total
+        reviewer.AssignedMiles += section.Miles;
+
+        updates.push({
+            SectionID: section.SectionID,
+            AssignedReviewer: reviewer.UserID,
+            DateAssigned: new Date().toISOString(),
+            ReviewStatus: "Pending"
+        });
+    }
+
+    // Update each section
+    for (const update of updates) {
+        const { error: updateError } = await supabase
+            .from("tblQASections")
+            .update({
+                AssignedReviewer: update.AssignedReviewer,
+                DateAssigned: update.DateAssigned,
+                ReviewStatus: update.ReviewStatus
+            })
+            .eq("SectionID", update.SectionID);
+
+        if (updateError) throw updateError;
+    }
+
+    return updates;
+}
+
+export async function removeMileage(selectedReviewers) {
+    for (const reviewer of selectedReviewers) {
+        const { error } = await supabase
+            .from("tblQASections")
+            .update({
+                AssignedReviewer: null,
+                DueDate: null,
+                DateAssigned: null
+            })
+            .eq("AssignedReviewer", reviewer.UserID)
+            .eq("ReviewStatus", "Pending");
+
+        if (error) throw error;
+    }
 }

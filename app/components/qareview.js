@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query'
 
-import { getReportsData, getUserMilesBreakdown, getDetailedReport, getAssignmentData, assignMiles, removeMileage } from "../utils/supabase/qareview-queries";
+import { getReportsData, getUserMilesBreakdown, getDetailedReport, getAssignmentData, assignMiles, removeMileage, getAssignedReviews, getReasonDistressCheck } from "../utils/supabase/qareview-queries";
 
 import { RechartsDevtools } from '@recharts/devtools'
 import { BarChart, XAxis, YAxis, Tooltip, Bar, ResponsiveContainer, Legend, LabelList } from 'recharts';
@@ -706,7 +706,6 @@ function AssignmentForm() {
                     </button>
                 </div>
                 <div className="flex flex-col gap-2 w-50">
-                    {/* Radio Mode Selector */}
                     <div className="border rounded bg-white p-3 text-black">
                         <div className="text-sm font-semibold mb-2">
                             Assign Mileage Options
@@ -746,7 +745,506 @@ function AssignmentForm() {
 }
 
 function ReviewForm() {
+    const [sectionType, setSectionType] = useState("new");
+    const [reviews, setReviews] = useState([]);
+    const [showElevated, setShowElevated] = useState(false);
+    const [showDistress, setShowDistress] = useState(false);
+
+    useEffect(() => {
+        async function loadReviews() {
+            const reviewStatus = sectionType === "new" ? "Pending" : "Completed";
+
+            const data = await getAssignedReviews(reviewStatus);
+            setReviews(data);
+
+            console.log(data)
+        }
+
+        loadReviews();
+    }, [sectionType]);
+
+    const testData = [
+        {
+            Rte: "001",
+            Dir: "NB",
+            MPFrom: "10.25",
+            MPTo: "12.50",
+            PaveType: "Asphalt",
+            ProfilerDate: "2025-01-15",
+            AIRI: "72",
+            AvgRut: "0.18",
+            SDI: "3.2",
+            Pattern: "None",
+            Transverse: "Low",
+            Longitudinal: "Medium",
+            WP_Pattern: "Minor",
+            WP_Lng: "0.05",
+            Concrete_Cracking: "N/A"
+        },
+        {
+            Rte: "002",
+            Dir: "SB",
+            MPFrom: "15.00",
+            MPTo: "17.75",
+            PaveType: "Concrete",
+            ProfilerDate: "2025-02-10",
+            AIRI: "85",
+            AvgRut: "0.05",
+            SDI: "1.8",
+            Pattern: "Wheel Path",
+            Transverse: "Medium",
+            Longitudinal: "Low",
+            WP_Pattern: "Moderate",
+            WP_Lng: "0.12",
+            Concrete_Cracking: "Transverse Cracks"
+        },
+        {
+            Rte: "003",
+            Dir: "EB",
+            MPFrom: "22.10",
+            MPTo: "25.00",
+            PaveType: "Composite",
+            ProfilerDate: "2025-03-05",
+            AIRI: "64",
+            AvgRut: "0.24",
+            SDI: "4.5",
+            Pattern: "Block",
+            Transverse: "High",
+            Longitudinal: "High",
+            WP_Pattern: "Severe",
+            WP_Lng: "0.21",
+            Concrete_Cracking: "Joint Failure"
+        },
+        {
+            Rte: "004",
+            Dir: "WB",
+            MPFrom: "30.00",
+            MPTo: "31.80",
+            PaveType: "Asphalt",
+            ProfilerDate: "2025-04-20",
+            AIRI: "91",
+            AvgRut: "0.02",
+            SDI: "1.1",
+            Pattern: "None",
+            Transverse: "None",
+            Longitudinal: "Low",
+            WP_Pattern: "None",
+            WP_Lng: "0.01",
+            Concrete_Cracking: "N/A"
+        }
+    ];
+
+    const testData2 = [
+        {
+            Rte: "001",
+            Direction: "N",
+            MPFrom: 5.7,
+            MPTo: 5.8
+        },
+        {
+            Rte: "002",
+            Direction: "N",
+            MPFrom: 5.7,
+            MPTo: 5.8
+        },
+        {
+            Rte: "003",
+            Direction: "N",
+            MPFrom: 5.7,
+            MPTo: 5.8
+        }
+    ]
+
     return (
-        <div>Hey</div>
+        <div className="mt-4 max-w-[1700px] mx-auto flex flex-col gap-5 text-black">
+            {/* Top */}
+            <div className="flex items-center gap-3 ml-0">
+                <label className="font-bold text-black">
+                    {"Sections in your queue:"}
+                </label>
+
+                <select className="w-80 h-9 border rounded px-2 bg-white text-black">
+                    {reviews.map(item => (
+                        <option key={item.SectionID} value={item.SectionID}>
+                            {item.Rte} | {item.Dir} | {item.MPStart} - {item.MPEnd} | {item.DueDate}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Bottom */}
+            <div className="grid grid-cols-[180px_180px_320px_220px] gap-5 items-start">
+
+                {/* Review Sections */}
+                <div className="border rounded bg-white p-3">
+                    <div className="font-semibold mb-2 text-sm">
+                        Review Sections
+                    </div>
+
+                    <label className="flex items-center gap-2 text-sm">
+                        <input
+                            type="radio"
+                            name="sectionType"
+                            value="new"
+                            checked={sectionType === "new"}
+                            onChange={(e) => setSectionType(e.target.value)}
+                        />
+                        New
+                    </label>
+
+                    <label className="flex items-center gap-2 text-sm mt-2">
+                        <input
+                            type="radio"
+                            name="sectionType"
+                            value="completed"
+                            checked={sectionType === "completed"}
+                            onChange={(e) => setSectionType(e.target.value)}
+                        />
+                        Previously Completed
+                    </label>
+                </div>
+
+                {/* Info */}
+                <div className="space-y-3">
+                    <div>
+                        <label className="block font-semibold text-sm mb-1">
+                            Reason for Review
+                        </label>
+                        <input
+                            className="w-full h-8 border rounded px-2 bg-white"
+                            value="Hey"
+                            readOnly
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block font-semibold text-sm mb-1">
+                            Data Year
+                        </label>
+                        <input
+                            className="w-full h-8 border rounded px-2 bg-white"
+                            value="2025"
+                            readOnly
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block font-semibold text-sm mb-1">
+                            Set Number
+                        </label>
+                        <input
+                            className="w-full h-8 border rounded px-2 bg-white"
+                            value="609"
+                            readOnly
+                        />
+                    </div>
+                </div>
+
+                {/* Description */}
+                <div className="w-80">
+                    <label className="block font-semibold text-sm mb-1">
+                        Review Reason Description
+                    </label>
+
+                    <textarea
+                        className="w-full h-42 border rounded p-2 resize-none bg-white"
+                        value="Hey"
+                        readOnly
+                    />
+                </div>
+
+                {/* Elevation */}
+                {true && <div className="space-y-3">
+                    <div>
+                        <label className="block font-semibold text-sm mb-1">
+                            Section Elevated by:
+                        </label>
+
+                        <input
+                            className="w-full h-8 border rounded px-2 bg-white"
+                            value="Hey"
+                            readOnly
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block font-semibold text-sm mb-1">
+                            Elevated Comments:
+                        </label>
+
+                        <textarea
+                            className="w-full h-25 border rounded p-2 resize-none bg-white"
+                            value="Hey"
+                            readOnly
+                        />
+                    </div>
+                </div>}
+            </div>
+
+            <div className="ag-theme-alpine w-full h-[250px] mb-8">
+                <label className="block font-semibold text-sm mb-1">
+                    Tenth Mile Sections
+                </label>
+
+                <AgGridReact
+                    rowData={testData}
+                    columnDefs={[
+                        { field: "Rte" },
+                        { field: "Dir" },
+                        { field: "MPFrom" },
+                        { field: "MPTo" },
+                        { field: "PaveType" },
+                        { field: "ProfilerDate" },
+                        { field: "AIRI" },
+                        { field: "AvgRut" },
+                        { field: "SDI" },
+                        { field: "Pattern" },
+                        { field: "Transverse" },
+                        { field: "Longitudinal" },
+                        { field: "WP_Pattern" },
+                        { field: "WP_Lng" },
+                        { field: "Concrete_Cracking" },
+                    ]}
+                    onGridReady={(params) => {
+                        params.api.autoSizeAllColumns();
+                    }}
+                    defaultColDef={{
+                        flex: 1,
+                        resizable: true,
+                        sortable: true,
+                        filter: true,
+                    }}
+                    pagination={true}
+                    paginationPageSize={20}
+                />
+            </div>
+
+            <fieldset className="border-2 rounded-lg p-4 mb-6">
+                <legend className="px-2 font-bold text-black">
+                    Review Inputs
+                </legend>
+
+                <div className="grid grid-cols-3 gap-6">
+                    <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                            <label className="font-bold text-black">
+                                Review Action:
+                            </label>
+
+                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                <option>Accept</option>
+                                <option>Reject</option>
+                                <option>Elevate</option>
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-3 ml-0">
+                            <label className="font-bold text-black">
+                                Designer Suggested SDI:
+                            </label>
+
+                            <input className="w-28 h-9 border rounded px-2 bg-white text-black" />
+                        </div>
+
+                        <div className="flex items-center gap-3 ml-0">
+                            <label className="font-bold text-black">
+                                Recommend Immediate Maintenance:
+                            </label>
+
+                            <input type="checkbox" />
+                        </div>
+
+                        <div className="border rounded bg-white p-2 text-black w-110">
+                            <div className="text-sm font-semibold mb-2">
+                                Select Mileposts this review applies to
+                            </div>
+
+                            {/* Header */}
+                            <div className="grid grid-cols-[60px_100px_80px_80px_70px] text-sm font-semibold border-b pb-1 mb-1">
+                                <span>Rte</span>
+                                <span>Direction</span>
+                                <span>MPFrom</span>
+                                <span>MPTo</span>
+                                <span>Applies</span>
+                            </div>
+
+                            <div className="h-40 overflow-y-auto">
+                                {testData2.map((r) => (
+                                    <label key={`${r.Rte}-${r.Direction}-${r.MPFrom}-${r.MPTo}`} className="grid grid-cols-[60px_100px_80px_80px_70px] items-center py-1">
+                                        <span className="truncate">{r.Rte}</span>
+                                        <span className="text-black text-left">
+                                            {r.Direction}
+                                        </span>
+                                        <span className="text-black text-left">
+                                            {r.MPFrom}
+                                        </span>
+                                        <span className="text-black text-left">
+                                            {r.MPTo}
+                                        </span>
+
+                                        <input
+                                            type="checkbox"
+                                        />
+                                    </label>
+                                ))}
+                            </div>
+                            <button className="mt-2 w-full text-sm border rounded py-1 hover:bg-gray-100">
+                                Select All
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div>
+                            <label className="font-bold text-black">
+                                Action Description:
+                            </label>
+
+                            <input
+                                className="w-full h-8 border rounded px-2 bg-white"
+                                value="PMS data and/or reason for review are inaccurate/unacceptable."
+                                readOnly
+                            />
+                        </div>
+
+                        <div>
+                            <label className="font-bold text-black">
+                                Select any that apply to your review:
+                            </label>
+
+                            <select
+                                multiple
+                                className={`w-full border p-2 rounded bg-white h-18`}
+                            >
+                                <option>Hey</option>
+                                <option>Hey</option>
+                                <option>Hey</option>
+                            </select>
+                        </div>
+
+                        <div className="space-y-3">
+                            <label className="font-bold text-black">
+                                Additional Comments:
+                            </label>
+
+                            <textarea
+                                className="w-full h-36 border rounded p-2 resize-none bg-white"
+                                value="Hey"
+                                readOnly
+                            />
+                        </div>
+
+                        <div className="flex justify-center mt-4">
+                            <button
+                                type="button"
+                                className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center"
+                            >
+                                Complete / Save Review
+                            </button>
+                        </div>
+                    </div>
+
+                    {true &&
+                        <div className="space-y-3">
+                            <fieldset className="border-2 rounded-lg p-4 mb-6">
+                                <legend className="px-2 font-bold text-black">
+                                    Distress Review
+                                </legend>
+
+                                <div className="grid grid-cols-2 gap-6">
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <label className="font-bold text-black w-48 text-right">
+                                                Pattern:
+                                            </label>
+
+                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                                <option>Acceptable</option>
+                                                <option>Too High</option>
+                                                <option>Slightly High</option>
+                                                <option>Too Low</option>
+                                                <option>Slightly Low</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <label className="font-bold text-black w-48 text-right">
+                                                Transverse:
+                                            </label>
+
+                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                                <option>Acceptable</option>
+                                                <option>Too High</option>
+                                                <option>Slightly High</option>
+                                                <option>Too Low</option>
+                                                <option>Slightly Low</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <label className="font-bold text-black w-48 text-right">
+                                                Longitudinal:
+                                            </label>
+
+                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                                <option>Acceptable</option>
+                                                <option>Too High</option>
+                                                <option>Slightly High</option>
+                                                <option>Too Low</option>
+                                                <option>Slightly Low</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-3">
+                                            <label className="font-bold text-black w-48 text-right">
+                                                WheelPath Pattern:
+                                            </label>
+
+                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                                <option>Acceptable</option>
+                                                <option>Too High</option>
+                                                <option>Slightly High</option>
+                                                <option>Too Low</option>
+                                                <option>Slightly Low</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <label className="font-bold text-black w-48 text-right">
+                                                WheelPath Longitudinal:
+                                            </label>
+
+                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                                <option>Acceptable</option>
+                                                <option>Too High</option>
+                                                <option>Slightly High</option>
+                                                <option>Too Low</option>
+                                                <option>Slightly Low</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="flex items-center gap-3">
+                                            <label className="font-bold text-black w-48 text-right">
+                                                RC Cracking:
+                                            </label>
+
+                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
+                                                <option>Acceptable</option>
+                                                <option>Too High</option>
+                                                <option>Slightly High</option>
+                                                <option>Too Low</option>
+                                                <option>Slightly Low</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    }
+                </div>
+            </fieldset>
+        </div>
     );
 }

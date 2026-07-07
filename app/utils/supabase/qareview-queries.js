@@ -245,3 +245,47 @@ export async function removeMileage(selectedReviewers) {
         if (error) throw error;
     }
 }
+
+// QA Review queries
+export async function getAssignedReviews(reviewStatus) {
+    const { data: reviews, error: reviewError } = await supabase
+        .from("tblQASections")
+        .select(`
+            SectionID,
+            Rte,
+            Dir,
+            MPStart,
+            MPEnd,
+            DueDate,
+            ReviewStatus,
+            AssignedReviewer,
+            ReviewStatus,
+            ElevatedComments,
+            ElevatedByUser,
+            SetNum,
+            DataYear,
+            ReasonCode
+        `)
+        .eq("AssignedReviewer", "HelinaB")
+        .eq("ReviewStatus", reviewStatus)
+        .order("DueDate")
+        .order("Rte")
+        .order("Dir")
+        .order("MPStart");
+
+    if (reviewError) throw reviewError;
+
+    return reviews;
+}
+
+export async function getReasonDistressCheck(reasonCode) {
+    const { data: distressCheck, error: distressError } = await supabase
+        .from("tblReasonLookup")
+        .select("DistressCheck, subFormSource")
+        .eq("ReasonCode", reasonCode)
+        .single();
+
+    if (distressError) throw distressError;
+
+    return distressCheck;
+}

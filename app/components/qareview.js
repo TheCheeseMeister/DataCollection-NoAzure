@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query'
 
-import { getReportsData, getUserMilesBreakdown, getDetailedReport, getAssignmentData, assignMiles, removeMileage, getAssignedReviews, getReasonDistressCheck } from "../utils/supabase/qareview-queries";
+import {
+    getReportsData, getUserMilesBreakdown, getDetailedReport, getAssignmentData, assignMiles, removeMileage,
+    getAssignedReviews, getReason, getReasonQuery, getReviewComments, getSDI, insertTenthMileReview, updateQASection, queryUserTracking, updateTenthMileReview, queryReasonCodePM, insertElevatedSection
+} from "../utils/supabase/qareview-queries";
 
 import { RechartsDevtools } from '@recharts/devtools'
 import { BarChart, XAxis, YAxis, Tooltip, Bar, ResponsiveContainer, Legend, LabelList } from 'recharts';
@@ -745,115 +748,376 @@ function AssignmentForm() {
 }
 
 function ReviewForm() {
+    // All Reviews
     const [sectionType, setSectionType] = useState("new");
     const [reviews, setReviews] = useState([]);
-    const [showElevated, setShowElevated] = useState(false);
-    const [showDistress, setShowDistress] = useState(false);
+
+    // Selected Review Data
+    const [selectedReview, setSelectedReview] = useState([]);
+    const [currentReason, setCurrentReason] = useState([]);
+    const [tenthMileData, setTenthMileData] = useState([]);
+    const [reviewStartTime, setReviewStartTime] = useState(null);
+
+    // Review Inputs
+    const [formDisabled, setFormDisabled] = useState(false);
+
+    const [reviewAction, setReviewAction] = useState("");
+    const [reviewComments, setReviewComments] = useState([]);
+    const [selectedReviewComments, setSelectedReviewComments] = useState([]);
+    const [reviewerComments, setReviewerComments] = useState("");
+    const [designerSDI, setDesignerSDI] = useState("");
+    const [maintenanceRecommended, setMaintenanceRecommended] = useState(false);
+    const [selectedMileposts, setSelectedMileposts] = useState([]);
+
+    // Distress Inputs
+    const [pattern, setPattern] = useState("");
+    const [transverse, setTransverse] = useState("");
+    const [longitudinal, setLongitudinal] = useState("");
+    const [wheelpathPattern, setWheelpathPattern] = useState("");
+    const [wheelpathLongitudinal, setWheelpathLongitudinal] = useState("");
+    const [RCCracking, setRCCracking] = useState("");
+
+    const loadReviews = async () => {
+        const reviewStatus = sectionType === "new" ? "Pending" : "Completed";
+
+        const data = await getAssignedReviews(reviewStatus);
+        setReviews(data);
+
+        setSelectedReview([]);
+        setCurrentReason([]);
+        setTenthMileData([]);
+
+        setReviewAction("");
+        setReviewComments([]);
+        setSelectedReviewComments([]);
+        setReviewerComments("");
+        setDesignerSDI("");
+        setMaintenanceRecommended(false);
+
+        setPattern("");
+        setTransverse("");
+        setLongitudinal("");
+        setWheelpathPattern("");
+        setWheelpathLongitudinal("");
+        setRCCracking("");
+        setFormDisabled(true);
+        setReviewStartTime(null);
+    };
 
     useEffect(() => {
-        async function loadReviews() {
-            const reviewStatus = sectionType === "new" ? "Pending" : "Completed";
-
-            const data = await getAssignedReviews(reviewStatus);
-            setReviews(data);
-
-            console.log(data)
-        }
-
         loadReviews();
     }, [sectionType]);
 
-    const testData = [
-        {
-            Rte: "001",
-            Dir: "NB",
-            MPFrom: "10.25",
-            MPTo: "12.50",
-            PaveType: "Asphalt",
-            ProfilerDate: "2025-01-15",
-            AIRI: "72",
-            AvgRut: "0.18",
-            SDI: "3.2",
-            Pattern: "None",
-            Transverse: "Low",
-            Longitudinal: "Medium",
-            WP_Pattern: "Minor",
-            WP_Lng: "0.05",
-            Concrete_Cracking: "N/A"
-        },
-        {
-            Rte: "002",
-            Dir: "SB",
-            MPFrom: "15.00",
-            MPTo: "17.75",
-            PaveType: "Concrete",
-            ProfilerDate: "2025-02-10",
-            AIRI: "85",
-            AvgRut: "0.05",
-            SDI: "1.8",
-            Pattern: "Wheel Path",
-            Transverse: "Medium",
-            Longitudinal: "Low",
-            WP_Pattern: "Moderate",
-            WP_Lng: "0.12",
-            Concrete_Cracking: "Transverse Cracks"
-        },
-        {
-            Rte: "003",
-            Dir: "EB",
-            MPFrom: "22.10",
-            MPTo: "25.00",
-            PaveType: "Composite",
-            ProfilerDate: "2025-03-05",
-            AIRI: "64",
-            AvgRut: "0.24",
-            SDI: "4.5",
-            Pattern: "Block",
-            Transverse: "High",
-            Longitudinal: "High",
-            WP_Pattern: "Severe",
-            WP_Lng: "0.21",
-            Concrete_Cracking: "Joint Failure"
-        },
-        {
-            Rte: "004",
-            Dir: "WB",
-            MPFrom: "30.00",
-            MPTo: "31.80",
-            PaveType: "Asphalt",
-            ProfilerDate: "2025-04-20",
-            AIRI: "91",
-            AvgRut: "0.02",
-            SDI: "1.1",
-            Pattern: "None",
-            Transverse: "None",
-            Longitudinal: "Low",
-            WP_Pattern: "None",
-            WP_Lng: "0.01",
-            Concrete_Cracking: "N/A"
-        }
-    ];
+    const handleSelectReview = async (e) => {
+        // Get selected review parameters
+        const sectionID = Number(e.target.value);
+        const review = reviews.find((item) => item.SectionID === sectionID);
+        setSelectedReview(review);
 
-    const testData2 = [
-        {
-            Rte: "001",
-            Direction: "N",
-            MPFrom: 5.7,
-            MPTo: 5.8
-        },
-        {
-            Rte: "002",
-            Direction: "N",
-            MPFrom: 5.7,
-            MPTo: 5.8
-        },
-        {
-            Rte: "003",
-            Direction: "N",
-            MPFrom: 5.7,
-            MPTo: 5.8
+        console.log(sectionID)
+
+        // Reset Review Inputs
+        setReviewAction("");
+        setReviewComments([]);
+        setSelectedReviewComments([]);
+        setReviewerComments("");
+        setDesignerSDI("");
+        setMaintenanceRecommended(false);
+
+        setPattern("");
+        setTransverse("");
+        setLongitudinal("");
+        setWheelpathPattern("");
+        setWheelpathLongitudinal("");
+        setRCCracking("");
+
+        setFormDisabled(true);
+        setReviewStartTime(null);
+
+        if (!review) {
+            setCurrentReason([]);
+            setTenthMileData([]);
+            return;
         }
-    ]
+
+        // Get selected review's reason record
+        const reason = await getReason(review["ReasonCode"]);
+        setCurrentReason(reason);
+
+        // Get tenth mile sections based on selected reason's query
+        const tenthData = await getReasonQuery(reason["subFormSource"], review["Rte"], review["Dir"], review["MPStart"], review["MPEnd"], review["SectionID"], sectionType === "completed");
+        setTenthMileData(tenthData);
+
+        setFormDisabled(false);
+        setReviewStartTime(new Date());
+    };
+
+    const handleReviewAction = async (e) => {
+        const action = e.target.value
+        setReviewAction(action);
+
+        if (action === "") {
+            return;
+        }
+
+        const reviewComments = await getReviewComments(action, currentReason["ReasonCode"]);
+        setReviewComments(reviewComments);
+    };
+
+    const actionDesc = {
+        "Accept": "PMS Data and reason for review are accurate/acceptable",
+        "Reject": "PMS data and/or reason for review are inaccurate/unacceptable.",
+        "Elevate": "Section being reviewed needs attention of supervisor."
+    };
+
+    const handleDistressReview = async (updatedValues = {}) => {
+        const arr = [
+            updatedValues.pattern ?? pattern,
+            updatedValues.transverse ?? transverse,
+            updatedValues.longitudinal ?? longitudinal,
+            updatedValues.wheelpathPattern ?? wheelpathPattern,
+            updatedValues.wheelpathLongitudinal ?? wheelpathLongitudinal,
+            updatedValues.RCCracking ?? RCCracking
+        ]
+
+        let slightCount = 0;
+        let acceptable = true;
+
+        for (const item of arr) {
+            if (item.startsWith("s")) {
+                slightCount++;
+
+                if (slightCount > 1) {
+                    acceptable = false;
+                    break;
+                }
+            }
+            else if (item.startsWith("t")) {
+                acceptable = false;
+                break;
+            }
+            else if (item !== "acceptable") {
+                acceptable = false;
+            }
+        }
+
+        if (acceptable) {
+            setReviewAction("Accept");
+
+            const reviewComments = await getReviewComments("Accept", currentReason["ReasonCode"]);
+            setReviewComments(reviewComments);
+        } else {
+            setReviewAction("Reject");
+
+            const reviewComments = await getReviewComments("Reject", currentReason["ReasonCode"]);
+            setReviewComments(reviewComments);
+        }
+    };
+
+    const handleCompleteReview = async (e) => {
+        const assignSelected = async (e) => {
+            if (selectedMileposts.length === 0) return;
+
+            let ReasonCode = selectedReview.ReasonCode;
+
+            if (selectedReview.DistressCheck && unit === "PM") {
+                ReasonCode = await queryReasonCodePM(currentReason.ReasonName);
+            }
+
+            const MPStart = Math.min(...selectedMileposts.map(item => item.MPFrom));
+            const MPEnd = Math.max(...selectedMileposts.map(item => item.MPTo));
+
+            const firstItem = selectedMileposts[0];
+
+            const params = {
+                Rte: firstItem.Rte,
+                Dir: firstItem.Dir,
+                MPStart: Number(MPStart.toFixed(1)),
+                MPEnd: Number(MPEnd.toFixed(1)),
+                Miles: Number((MPEnd - MPStart).toFixed(1)),
+                Region: selectedReview.Region,
+                SetNum: selectedReview.SetNum,
+                AssignedReviewer: "HelinaB",
+                ReasonCode: ReasonCode,
+                ReviewStatus: "Pending",
+                ElevatedComments: reviewerComments,
+                DataYear: selectedReview.DataYear,
+                ElevatedByUser: "HelinaB",
+                DateAssigned: new Date().toISOString()
+            };
+
+            await insertElevatedSection(params);
+        };
+
+        const resetReviewForm = async (keepSection) => {
+            // Reset Review Inputs
+            setReviewAction("");
+            setReviewComments([]);
+            setSelectedReviewComments([]);
+            setReviewerComments("");
+            setDesignerSDI("");
+            setMaintenanceRecommended(false);
+
+            setPattern("");
+            setTransverse("");
+            setLongitudinal("");
+            setWheelpathPattern("");
+            setWheelpathLongitudinal("");
+            setRCCracking("");
+
+            if (!keepSection) {
+                setSelectedReview([]);
+                setCurrentReason([]);
+                setTenthMileData([]);
+                setFormDisabled(true);
+                setReviewStartTime(null);
+                return;
+            }
+
+            // Get selected review's reason record
+            const reason = await getReason(selectedReview.ReasonCode);
+            setCurrentReason(reason);
+
+            // Get tenth mile sections based on selected reason's query
+            const tenthData = await getReasonQuery(reason["subFormSource"], selectedReview.Rte, selectedReview.Dir, selectedReview.MPStart, selectedReview.MPEnd, selectedReview.SectionID, sectionType === "completed");
+            setTenthMileData(tenthData);
+
+            setFormDisabled(false);
+            setReviewStartTime(new Date());
+        };
+
+        // currently default, when login is added, will change
+        const unit = "PD"
+        let finishedReview = true
+
+        // Validation
+        if (reviewAction === "") {
+            alert("You must select a recommended action.");
+            return;
+        } else if (reviewerComments === "" && selectedReviewComments.length === 0) {
+            alert("You must select comments from the list box AND/OR include review notes on this section before it can be completed.");
+            return;
+        } else if (selectedMileposts.length === 0) {
+            alert("You must select mileposts this review applies to in the list box on the left.");
+            return;
+        }
+
+        finishedReview = selectedMileposts.length === tenthMileData.length
+
+        if (currentReason?.DistressCheck && unit === "PM" && reviewAction !== "Elevate") {
+            if (pattern === "" || transverse === "" || longitudinal === "" || wheelpathPattern === "" || wheelpathLongitudinal === "" || RCCracking === "") {
+                alert("All distress types need a review rating.");
+                return;
+            }
+        } else if (unit === "PD" && designerSDI === "") {
+            alert("You must enter a suggested SDI for these mileposts.");
+            return;
+        }
+
+        // Elevate
+        if (reviewAction === "Elevate") {
+            if (selectedReview?.ElevatedByUser === "") {
+                alert("Section can not be elevated further. Please discuss this section in person to resolve any issues then resubmit as Accepted/Rejected.");
+                return;
+            } else {
+                await assignSelected();
+            }
+        } else if (currentReason?.DistressCheck && unit === "PD" && reviewAction === "Reject") {
+            await assignSelected();
+        }
+
+        // Update
+        if (sectionType === "completed") {
+            for (const item of selectedMileposts) {
+                const params = {
+                    ReviewAction: reviewAction,
+                    ReviewerNotes: [...selectedReviewComments, reviewerComments].filter(Boolean).join("//"),
+                    ReviewCompletedDate: new Date().toISOString()
+                }
+
+                const matching = {
+                    SectionID: selectedReview.SectionID,
+                    Rte: item.Rte,
+                    Dir: item.Dir,
+                    MPFrom: item.MPFrom,
+                    MPTo: item.MPTo,
+                }
+
+                const tenthMileID = await updateTenthMileReview(params, matching);
+
+                if (currentReason.DistressCheck && unit === "PM") {
+                    const distressParams = {
+                        TenthMileID: tenthMileID,
+                        Pattern: reviewAction === "Elevate" ? "UNKNOWN" : pattern,
+                        Transverse: reviewAction === "Elevate" ? "UNKNOWN" : transverse,
+                        Longitudinal: reviewAction === "Elevate" ? "UNKNOWN" : longitudinal,
+                        WheelPath_Pattern: reviewAction === "Elevate" ? "UNKNOWN" : wheelpathPattern,
+                        WheelPath_Longitudinal: reviewAction === "Elevate" ? "UNKNOWN" : wheelpathLongitudinal,
+                        RC_Cracking: reviewAction === "Elevate" ? "UNKNOWN" : RCCracking
+                    };
+
+                    await insertDistressCheck(distressParams);
+                }
+            }
+
+            alert("Review successfully updated");
+            return;
+        }
+
+        for (const item of selectedMileposts) {
+            const SDI = await getSDI(item.Rte, item.Dir, item.MPFrom);
+
+            const params = {
+                SectionID: selectedReview.SectionID,
+                Rte: item.Rte,
+                Dir: item.Dir,
+                MPFrom: item.MPFrom,
+                MPTo: item.MPTo,
+                ReviewAction: (currentReason.DistressCheck && unit === "PD" && reviewAction === "Reject") ? "Elevate_M" : reviewAction,
+                DesignerSDI: (currentReason.DistressCheck && unit === "PD") ? designerSDI : null,
+                MaintenanceRecommended: maintenanceRecommended,
+                PMSSDI: SDI,
+                ReviewerNotes: [...selectedReviewComments, reviewerComments].filter(Boolean).join("//"),
+                ReviewCompletedDate: new Date().toISOString()
+            }
+
+            const tenthMileID = await insertTenthMileReview(params);
+
+            if (currentReason.DistressCheck && unit === "PM") {
+                const distressParams = {
+                    TenthMileID: tenthMileID,
+                    Pattern: reviewAction === "Elevate" ? "UNKNOWN" : pattern,
+                    Transverse: reviewAction === "Elevate" ? "UNKNOWN" : transverse,
+                    Longitudinal: reviewAction === "Elevate" ? "UNKNOWN" : longitudinal,
+                    WheelPath_Pattern: reviewAction === "Elevate" ? "UNKNOWN" : wheelpathPattern,
+                    WheelPath_Longitudinal: reviewAction === "Elevate" ? "UNKNOWN" : wheelpathLongitudinal,
+                    RC_Cracking: reviewAction === "Elevate" ? "UNKNOWN" : RCCracking
+                };
+
+                await insertDistressCheck(distressParams);
+            }
+        }
+
+        if (finishedReview) {
+            await updateQASection(selectedReview.SectionID, reviewStartTime);
+            alert("Review Section Completed");
+
+            await queryUserTracking("HelinaB", selectedReview.SectionID, "Helina Bitewlign"); // Hard coded for now while no login.
+            resetReviewForm(false);
+            loadReviews();
+        } else {
+            resetReviewForm(true);
+        }
+    }
+
+
+    // Dynamic field list for AGGrid based on queried tenth mile data
+    const tenthMileColumns = tenthMileData?.length
+        ? Object.keys(tenthMileData[0]).map((field) => ({
+            field,
+            headerName: field,
+        }))
+        : [];
 
     return (
         <div className="mt-4 max-w-[1700px] mx-auto flex flex-col gap-5 text-black">
@@ -863,7 +1127,8 @@ function ReviewForm() {
                     {"Sections in your queue:"}
                 </label>
 
-                <select className="w-80 h-9 border rounded px-2 bg-white text-black">
+                <select value={selectedReview?.SectionID ?? ""} onChange={handleSelectReview} className="w-80 h-9 border rounded px-2 bg-white text-black">
+                    <option value="">-- Select --</option>
                     {reviews.map(item => (
                         <option key={item.SectionID} value={item.SectionID}>
                             {item.Rte} | {item.Dir} | {item.MPStart} - {item.MPEnd} | {item.DueDate}
@@ -912,7 +1177,7 @@ function ReviewForm() {
                         </label>
                         <input
                             className="w-full h-8 border rounded px-2 bg-white"
-                            value="Hey"
+                            value={currentReason?.ReasonName ?? ""}
                             readOnly
                         />
                     </div>
@@ -923,7 +1188,7 @@ function ReviewForm() {
                         </label>
                         <input
                             className="w-full h-8 border rounded px-2 bg-white"
-                            value="2025"
+                            value={selectedReview?.DataYear ?? ""}
                             readOnly
                         />
                     </div>
@@ -934,7 +1199,7 @@ function ReviewForm() {
                         </label>
                         <input
                             className="w-full h-8 border rounded px-2 bg-white"
-                            value="609"
+                            value={selectedReview?.SetNum ?? ""}
                             readOnly
                         />
                     </div>
@@ -948,13 +1213,13 @@ function ReviewForm() {
 
                     <textarea
                         className="w-full h-42 border rounded p-2 resize-none bg-white"
-                        value="Hey"
+                        value={currentReason?.ReasonDescription ?? ""}
                         readOnly
                     />
                 </div>
 
                 {/* Elevation */}
-                {true && <div className="space-y-3">
+                {selectedReview?.ElevatedByUser && <div className="space-y-3">
                     <div>
                         <label className="block font-semibold text-sm mb-1">
                             Section Elevated by:
@@ -962,7 +1227,7 @@ function ReviewForm() {
 
                         <input
                             className="w-full h-8 border rounded px-2 bg-white"
-                            value="Hey"
+                            value={selectedReview?.ElevatedByUser ?? ""}
                             readOnly
                         />
                     </div>
@@ -974,7 +1239,7 @@ function ReviewForm() {
 
                         <textarea
                             className="w-full h-25 border rounded p-2 resize-none bg-white"
-                            value="Hey"
+                            value={selectedReview?.ElevatedComments ?? ""}
                             readOnly
                         />
                     </div>
@@ -987,24 +1252,8 @@ function ReviewForm() {
                 </label>
 
                 <AgGridReact
-                    rowData={testData}
-                    columnDefs={[
-                        { field: "Rte" },
-                        { field: "Dir" },
-                        { field: "MPFrom" },
-                        { field: "MPTo" },
-                        { field: "PaveType" },
-                        { field: "ProfilerDate" },
-                        { field: "AIRI" },
-                        { field: "AvgRut" },
-                        { field: "SDI" },
-                        { field: "Pattern" },
-                        { field: "Transverse" },
-                        { field: "Longitudinal" },
-                        { field: "WP_Pattern" },
-                        { field: "WP_Lng" },
-                        { field: "Concrete_Cracking" },
-                    ]}
+                    rowData={tenthMileData}
+                    columnDefs={tenthMileColumns}
                     onGridReady={(params) => {
                         params.api.autoSizeAllColumns();
                     }}
@@ -1031,27 +1280,36 @@ function ReviewForm() {
                                 Review Action:
                             </label>
 
-                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                <option>Accept</option>
-                                <option>Reject</option>
-                                <option>Elevate</option>
+                            <select value={reviewAction} onChange={handleReviewAction} className={`w-28 h-9 border rounded px-2 bg-white text-black ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`} disabled={formDisabled}>
+                                <option value="">-- Select --</option>
+                                <option value="Accept">Accept</option>
+                                <option value="Reject">Reject</option>
+                                <option value="Elevate">Elevate</option>
                             </select>
                         </div>
 
-                        <div className="flex items-center gap-3 ml-0">
-                            <label className="font-bold text-black">
-                                Designer Suggested SDI:
-                            </label>
+                        {/* TODO: Replace true with condition for unit once login exists. If unit is "PD", visible, otherwise not. */}
+                        {true &&
+                            <div className="flex items-center gap-3 ml-0">
+                                <label className="font-bold text-black">
+                                    Designer Suggested SDI:
+                                </label>
 
-                            <input className="w-28 h-9 border rounded px-2 bg-white text-black" />
-                        </div>
+                                <input value={designerSDI} onChange={(e) => setDesignerSDI(e.target.value)} className={`w-28 h-9 border rounded px-2 bg-white text-black ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`} disabled={formDisabled} />
+                            </div>
+                        }
 
                         <div className="flex items-center gap-3 ml-0">
                             <label className="font-bold text-black">
                                 Recommend Immediate Maintenance:
                             </label>
 
-                            <input type="checkbox" />
+                            <input
+                                onChange={(e) => setMaintenanceRecommended(e.target.checked)}
+                                type="checkbox"
+                                checked={maintenanceRecommended}
+                                disabled={formDisabled}
+                            />
                         </div>
 
                         <div className="border rounded bg-white p-2 text-black w-110">
@@ -1069,7 +1327,7 @@ function ReviewForm() {
                             </div>
 
                             <div className="h-40 overflow-y-auto">
-                                {testData2.map((r) => (
+                                {tenthMileData?.map((r) => (
                                     <label key={`${r.Rte}-${r.Direction}-${r.MPFrom}-${r.MPTo}`} className="grid grid-cols-[60px_100px_80px_80px_70px] items-center py-1">
                                         <span className="truncate">{r.Rte}</span>
                                         <span className="text-black text-left">
@@ -1083,13 +1341,57 @@ function ReviewForm() {
                                         </span>
 
                                         <input
+                                            checked={selectedMileposts.some(
+                                                (x) =>
+                                                    x.Rte === r.Rte &&
+                                                    x.Dir === r.Dir &&
+                                                    x.MPFrom === r.MPFrom &&
+                                                    x.MPTo === r.MPTo
+                                            )}
+                                            onChange={() => {
+                                                setSelectedMileposts((prev) => {
+                                                    const exists = prev.some(
+                                                        (x) =>
+                                                            x.Rte === r.Rte &&
+                                                            x.Dir === r.Dir &&
+                                                            x.MPFrom === r.MPFrom &&
+                                                            x.MPTo === r.MPTo
+                                                    );
+
+                                                    return exists
+                                                        ? prev.filter(
+                                                            (x) =>
+                                                                !(
+                                                                    x.Rte === r.Rte &&
+                                                                    x.Dir === r.Dir &&
+                                                                    x.MPFrom === r.MPFrom &&
+                                                                    x.MPTo === r.MPTo
+                                                                )
+                                                        )
+                                                        : [...prev, r];
+                                                });
+                                            }}
                                             type="checkbox"
                                         />
                                     </label>
                                 ))}
                             </div>
-                            <button className="mt-2 w-full text-sm border rounded py-1 hover:bg-gray-100">
-                                Select All
+
+                            <button
+                                className={`mt-2 w-full text-sm border rounded py-1 hover:bg-gray-100 ${formDisabled ? "opacity-50 cursor-not-allowed" : ""
+                                    }`}
+                                onClick={() => {
+                                    if (selectedMileposts.length === tenthMileData.length) {
+                                        setSelectedMileposts([]);
+                                    } else {
+                                        setSelectedMileposts(tenthMileData);
+                                    }
+                                }}
+                                disabled={tenthMileData?.length === 0 || formDisabled}
+                            >
+                                {selectedMileposts.length === tenthMileData.length && tenthMileData.length !== 0
+                                    ? "Deselect All"
+                                    : "Select All"}
                             </button>
                         </div>
                     </div>
@@ -1101,9 +1403,10 @@ function ReviewForm() {
                             </label>
 
                             <input
-                                className="w-full h-8 border rounded px-2 bg-white"
-                                value="PMS data and/or reason for review are inaccurate/unacceptable."
+                                className={`w-full h-8 border rounded px-2 bg-white ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                                value={actionDesc[reviewAction] || ""}
                                 readOnly
+                                disabled={formDisabled}
                             />
                         </div>
 
@@ -1114,11 +1417,23 @@ function ReviewForm() {
 
                             <select
                                 multiple
-                                className={`w-full border p-2 rounded bg-white h-18`}
+                                value={selectedReviewComments}
+                                onChange={(e) => {
+                                    const selected = Array.from(
+                                        e.target.selectedOptions,
+                                        (option) => option.value
+                                    );
+
+                                    setSelectedReviewComments(selected);
+                                }}
+                                className={`w-full border p-2 rounded bg-white h-36 ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                                disabled={formDisabled}
                             >
-                                <option>Hey</option>
-                                <option>Hey</option>
-                                <option>Hey</option>
+                                {reviewComments?.map((item) => (
+                                    <option key={item.ReviewComments} value={item.ReviewComments}>
+                                        {item.ReviewComments}
+                                    </option>
+                                ))}
                             </select>
                         </div>
 
@@ -1128,23 +1443,27 @@ function ReviewForm() {
                             </label>
 
                             <textarea
-                                className="w-full h-36 border rounded p-2 resize-none bg-white"
-                                value="Hey"
-                                readOnly
+                                className={`w-full h-36 border rounded p-2 resize-none bg-white ${formDisabled ? "opacity-50 cursor-not-allowed" : ""}`}
+                                value={reviewerComments}
+                                onChange={(e) => setReviewerComments(e.target.value)}
+                                disabled={formDisabled}
                             />
                         </div>
 
                         <div className="flex justify-center mt-4">
                             <button
                                 type="button"
-                                className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center"
+                                onClick={handleCompleteReview}
+                                className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed disabled:hover:bg-gray-300 h-8 flex items-center justify-center"
+                                disabled={formDisabled}
                             >
-                                Complete / Save Review
+                                {sectionType === "completed" ? "Save Review" : "Complete Review"}
                             </button>
                         </div>
                     </div>
 
-                    {true &&
+                    {/* TODO: Once Login is put in, replace true with unit check, if unit is "PD", not visible */}
+                    {currentReason?.DistressCheck && true &&
                         <div className="space-y-3">
                             <fieldset className="border-2 rounded-lg p-4 mb-6">
                                 <legend className="px-2 font-bold text-black">
@@ -1158,12 +1477,21 @@ function ReviewForm() {
                                                 Pattern:
                                             </label>
 
-                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                                <option>Acceptable</option>
-                                                <option>Too High</option>
-                                                <option>Slightly High</option>
-                                                <option>Too Low</option>
-                                                <option>Slightly Low</option>
+                                            <select
+                                                value={pattern}
+                                                onChange={(e) => {
+                                                    setPattern(e.target.value);
+                                                    handleDistressReview({ pattern: e.target.value });
+                                                }}
+                                                className="w-28 h-9 border rounded px-2 bg-white text-black"
+                                                disabled={formDisabled}
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="acceptable">Acceptable</option>
+                                                <option value="tooHigh">Too High</option>
+                                                <option value="slightlyHigh">Slightly High</option>
+                                                <option value="tooLow">Too Low</option>
+                                                <option value="slightlyLow">Slightly Low</option>
                                             </select>
                                         </div>
 
@@ -1172,12 +1500,21 @@ function ReviewForm() {
                                                 Transverse:
                                             </label>
 
-                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                                <option>Acceptable</option>
-                                                <option>Too High</option>
-                                                <option>Slightly High</option>
-                                                <option>Too Low</option>
-                                                <option>Slightly Low</option>
+                                            <select
+                                                value={transverse}
+                                                onChange={(e) => {
+                                                    setTransverse(e.target.value);
+                                                    handleDistressReview({ transverse: e.target.value });
+                                                }}
+                                                className="w-28 h-9 border rounded px-2 bg-white text-black"
+                                                disabled={formDisabled}
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="acceptable">Acceptable</option>
+                                                <option value="tooHigh">Too High</option>
+                                                <option value="slightlyHigh">Slightly High</option>
+                                                <option value="tooLow">Too Low</option>
+                                                <option value="slightlyLow">Slightly Low</option>
                                             </select>
                                         </div>
 
@@ -1186,12 +1523,21 @@ function ReviewForm() {
                                                 Longitudinal:
                                             </label>
 
-                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                                <option>Acceptable</option>
-                                                <option>Too High</option>
-                                                <option>Slightly High</option>
-                                                <option>Too Low</option>
-                                                <option>Slightly Low</option>
+                                            <select
+                                                value={longitudinal}
+                                                onChange={(e) => {
+                                                    setLongitudinal(e.target.value);
+                                                    handleDistressReview({ longitudinal: e.target.value });
+                                                }}
+                                                className="w-28 h-9 border rounded px-2 bg-white text-black"
+                                                disabled={formDisabled}
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="acceptable">Acceptable</option>
+                                                <option value="tooHigh">Too High</option>
+                                                <option value="slightlyHigh">Slightly High</option>
+                                                <option value="tooLow">Too Low</option>
+                                                <option value="slightlyLow">Slightly Low</option>
                                             </select>
                                         </div>
                                     </div>
@@ -1202,12 +1548,21 @@ function ReviewForm() {
                                                 WheelPath Pattern:
                                             </label>
 
-                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                                <option>Acceptable</option>
-                                                <option>Too High</option>
-                                                <option>Slightly High</option>
-                                                <option>Too Low</option>
-                                                <option>Slightly Low</option>
+                                            <select
+                                                value={wheelpathPattern}
+                                                onChange={(e) => {
+                                                    setWheelpathPattern(e.target.value);
+                                                    handleDistressReview({ wheelpathPattern: e.target.value });
+                                                }}
+                                                className="w-28 h-9 border rounded px-2 bg-white text-black"
+                                                disabled={formDisabled}
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="acceptable">Acceptable</option>
+                                                <option value="tooHigh">Too High</option>
+                                                <option value="slightlyHigh">Slightly High</option>
+                                                <option value="tooLow">Too Low</option>
+                                                <option value="slightlyLow">Slightly Low</option>
                                             </select>
                                         </div>
 
@@ -1216,12 +1571,21 @@ function ReviewForm() {
                                                 WheelPath Longitudinal:
                                             </label>
 
-                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                                <option>Acceptable</option>
-                                                <option>Too High</option>
-                                                <option>Slightly High</option>
-                                                <option>Too Low</option>
-                                                <option>Slightly Low</option>
+                                            <select
+                                                value={wheelpathLongitudinal}
+                                                onChange={(e) => {
+                                                    setWheelpathLongitudinal(e.target.value);
+                                                    handleDistressReview({ wheelpathLongitudinal: e.target.value });
+                                                }}
+                                                className="w-28 h-9 border rounded px-2 bg-white text-black"
+                                                disabled={formDisabled}
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="acceptable">Acceptable</option>
+                                                <option value="tooHigh">Too High</option>
+                                                <option value="slightlyHigh">Slightly High</option>
+                                                <option value="tooLow">Too Low</option>
+                                                <option value="slightlyLow">Slightly Low</option>
                                             </select>
                                         </div>
 
@@ -1230,15 +1594,61 @@ function ReviewForm() {
                                                 RC Cracking:
                                             </label>
 
-                                            <select className="w-28 h-9 border rounded px-2 bg-white text-black">
-                                                <option>Acceptable</option>
-                                                <option>Too High</option>
-                                                <option>Slightly High</option>
-                                                <option>Too Low</option>
-                                                <option>Slightly Low</option>
+                                            <select
+                                                value={RCCracking}
+                                                onChange={(e) => {
+                                                    setRCCracking(e.target.value);
+                                                    handleDistressReview({ RCCracking: e.target.value });
+                                                }}
+                                                className="w-28 h-9 border rounded px-2 bg-white text-black"
+                                                disabled={formDisabled}
+                                            >
+                                                <option value="">-- Select --</option>
+                                                <option value="acceptable">Acceptable</option>
+                                                <option value="tooHigh">Too High</option>
+                                                <option value="slightlyHigh">Slightly High</option>
+                                                <option value="tooLow">Too Low</option>
+                                                <option value="slightlyLow">Slightly Low</option>
                                             </select>
                                         </div>
                                     </div>
+                                </div>
+
+                                <div className="flex justify-center mt-8 mb-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const allSelected =
+                                                pattern === "acceptable" &&
+                                                transverse === "acceptable" &&
+                                                longitudinal === "acceptable" &&
+                                                wheelpathPattern === "acceptable" &&
+                                                wheelpathLongitudinal === "acceptable" &&
+                                                RCCracking === "acceptable";
+
+                                            const newValue = allSelected ? "" : "acceptable";
+
+                                            setPattern(newValue);
+                                            setTransverse(newValue);
+                                            setLongitudinal(newValue);
+                                            setWheelpathPattern(newValue);
+                                            setWheelpathLongitudinal(newValue);
+                                            setRCCracking(newValue);
+
+                                            handleDistressReview({
+                                                pattern: newValue,
+                                                transverse: newValue,
+                                                longitudinal: newValue,
+                                                wheelpathPattern: newValue,
+                                                wheelpathLongitudinal: newValue,
+                                                RCCracking: newValue
+                                            });
+                                        }}
+                                        className="px-4 py-2 border rounded bg-white text-black hover:bg-gray-100"
+                                        disabled={formDisabled}
+                                    >
+                                        Accept All
+                                    </button>
                                 </div>
                             </fieldset>
                         </div>

@@ -264,7 +264,8 @@ export async function getAssignedReviews(reviewStatus) {
             ElevatedByUser,
             SetNum,
             DataYear,
-            ReasonCode
+            ReasonCode,
+            Region
         `)
         .eq("AssignedReviewer", "HelinaB")
         .eq("ReviewStatus", reviewStatus)
@@ -278,14 +279,239 @@ export async function getAssignedReviews(reviewStatus) {
     return reviews;
 }
 
-export async function getReasonDistressCheck(reasonCode) {
-    const { data: distressCheck, error: distressError } = await supabase
+export async function getReason(reasonCode) {
+    const { data: reason, error: reasonError } = await supabase
         .from("tblReasonLookup")
-        .select("DistressCheck, subFormSource")
+        .select("*")
         .eq("ReasonCode", reasonCode)
         .single();
 
-    if (distressError) throw distressError;
+    if (reasonError) throw reasonError;
 
-    return distressCheck;
+    return reason;
+}
+
+export async function getReasonQuery(query, route, dir, MPFrom, MPTo, SectionID, reviewCompleted) {
+    const { data, error } = await supabase.rpc(query, {
+        p_rte: route,
+        p_dir: dir,
+        p_mpfrom: MPFrom,
+        p_mpto: MPTo
+    });
+
+    if (error) throw error;
+
+    if (reviewCompleted) return data;
+
+    const { data: completed, error: completedError } = await supabase
+        .from("tblQATenthMile")
+        .select("Rte, Dir, MPFrom, MPTo")
+        .eq("SectionID", SectionID)
+        .not("ReviewCompletedDate", "is", null);
+
+    if (completedError) throw completedError;
+
+    return data.filter((milepost) => {
+        return !completed.some((review) =>
+            review.Rte === milepost.Rte &&
+            review.Dir === milepost.Dir &&
+            review.MPFrom === milepost.MPFrom &&
+            review.MPTo === milepost.MPTo
+        );
+    });
+}
+
+export async function getReviewComments(reviewAction, reasonCode) {
+    const { data, error } = await supabase
+        .from("tblReviewComments")
+        .select("ReviewComments")
+        .eq("ReviewAction", reviewAction)
+        .eq("ReasonCode", reasonCode)
+
+    if (error) throw error;
+
+    return data;
+}
+
+export async function getSDI(route, dir, MPFrom) {
+    const { data, error } = await supabase
+        .from("tblRoadData")
+        .select("SDI")
+        .eq("Rte", route)
+        .eq("Dir", dir)
+        .eq("MPFrom", MPFrom)
+        .single();
+
+    if (error) throw error;
+
+    return data.SDI;
+}
+
+export async function insertTenthMileReview(params) {
+    const { data, error } = await supabase
+        .from("tblQATenthMile")
+        .insert(params)
+        .select("ID")
+        .single();
+
+    if (error) throw error;
+
+    return data.ID;
+}
+
+export async function insertDistressCheck(params) {
+    const { data, error } = await supabase
+        .from("tblDistressCheck")
+        .insert(params);
+
+    if (error) throw error;
+
+    return data;
+}
+
+export async function updateQASection(SectionID, reviewStartTime) {
+    const timeToComplete = Math.floor(
+        (new Date() - new Date(reviewStartTime)) / 60000
+    );
+
+    const { error } = await supabase
+        .from("tblQASections")
+        .update({
+            ReviewCompletedDate: new Date().toISOString(),
+            TimeToComplete: timeToComplete,
+            ReviewStatus: "Completed"
+        })
+        .eq("SectionID", SectionID);
+
+    if (error) {
+        console.error(error);
+        throw error;
+    }
+}
+
+export async function queryUserTracking(UserID, SectionID, Username) {
+    let { data: tracking, error } = await supabase
+        .from("tblUserTracking")
+        .select("MilesReviewed")
+        .eq("UserID", UserID)
+        .maybeSingle();
+
+    if (error) throw error;
+
+    if (!tracking) {
+        const { data, error } = await supabase
+            .from("tblUserTracking")
+            .insert({
+                UserID: UserID,
+                MilesReviewed: 0
+            })
+            .select("MilesReviewed")
+            .single();
+
+        if (error) throw error;
+
+        tracking = data;
+    }
+
+    const prevMiles = tracking.MilesReviewed ?? 0;
+
+    const { data: section, error: sectionError } = await supabase
+        .from("tblQASections")
+        .select("Miles")
+        .eq("SectionID", SectionID)
+        .single();
+
+    if (sectionError) throw sectionError;
+
+    const curMiles = prevMiles + section.Miles;
+
+    const { error: updateError } = await supabase
+        .from("tblUserTracking")
+        .update({
+            MilesReviewed: curMiles,
+            DateUpdated: new Date().toISOString()
+        })
+        .eq("UserID", UserID);
+
+    if (updateError) throw updateError;
+
+    const amtTenMiles =
+        Math.floor(curMiles / 10) -
+        Math.floor(prevMiles / 10);
+
+    for (let i = 0; i < amtTenMiles; i++) {
+        const year = new Date().getFullYear();
+
+        // Get latest assignment ID
+        const { data: latest } = await supabase
+            .from("tblAssignments")
+            .select("AssignmentID")
+            .like("AssignmentID", `${year}%`)
+            .order("AssignmentID", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+        let taskSeq = 1;
+
+        if (latest?.AssignmentID) {
+            taskSeq =
+                parseInt(latest.AssignmentID.split("_")[1]) + 1;
+        }
+
+        const assignmentID =
+            `${year}_${String(taskSeq).padStart(3, "0")}`;
+
+        await supabase
+            .from("tblAssignments")
+            .insert({
+                AssignmentID: assignmentID,
+                LoggedBy: UserID,
+                DateLogged: new Date().toISOString(),
+                AssignmentType: "QA Review Completed (10 miles)",
+                AssignedBy: UserID,
+                AssignedTo: Username, // for now, will replace with username when gotten
+                DateAssigned: new Date().toISOString(),
+                DueDate: new Date().toISOString(),
+                Status: "Completed",
+                CompletionDate: new Date().toISOString(),
+                ProjectDescription: "Completed review of 10 miles of highway network"
+            });
+    }
+}
+
+export async function updateTenthMileReview(updates, matching) {
+    const { data, error } = await supabase
+        .from("tblQATenthMile")
+        .update(updates)
+        .match(matching)
+        .select("ID")
+        .single();
+
+    if (error) throw error;
+
+    return data.ID;
+}
+
+export async function queryReasonCodePM(ReasonName) {
+    const { data, error } = await supabase
+        .from("tblReasonLookup")
+        .select("ReasonCode")
+        .eq("ReasonName", ReasonName)
+        .eq("AssignedUnit", "PM")
+        .single();
+
+    if (error) throw error;
+
+    return data.ReasonCode;
+}
+
+export async function insertElevatedSection(params) {
+    const { data, error } = await supabase
+        .from("tblQASections")
+        .insert(params)
+        .select();
+
+    if (error) throw error;
+
+    return data;
 }

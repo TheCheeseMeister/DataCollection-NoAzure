@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query'
 
-import { getDirections } from '../utils/supabase/processor-queries';
+import { getDirections, getGPSData, getSectionData, getAllGPSData } from '../utils/supabase/processor-queries';
 
 import * as XLSX from "xlsx";
 
@@ -88,6 +88,27 @@ function TenthMileProcessor() {
 
             return false;
         };
+
+        const StandardRound = (pValue, pDecimalPlaces) => {
+            if (pDecimalPlaces < 0) {
+                throw new Error("Decimal places cannot be negative");
+            }
+
+            const LDecimalSymbol = "."; // Changes based on country
+            const LValue = pValue.toString();
+            const LPos = LValue.indexOf(LDecimalSymbol);
+            const LNumDecimals = LValue.length - LPos - 1;
+
+            if (LPos > 0 && LNumDecimals > 0 && LNumDecimals > pDecimalPlaces) {
+                let QValue = (1 / (10 ** (LNumDecimals + 1)));
+
+                if (pValue < 0) QValue = -QValue;
+
+                return Math.round((pValue + QValue) * Math.pow(10, pDecimalPlaces)) / Math.pow(10, pDecimalPlaces);
+            } else {
+                return pValue;
+            }
+        }
 
         const calcSDI = (jsonData) => {
             const calcIndex = (Rte, Dir, MPFrom, RutAvg, D) => {
@@ -202,12 +223,6 @@ function TenthMileProcessor() {
                     }
                 }
 
-                console.log({
-                    haveRC,
-                    haveAC,
-                    D: D
-                });
-
                 if (haveRC && haveAC) {
                     alert(
                         `There are both concrete AND asphalt distress ratings on the record in the update table for\n(Rte ${Rte} Dir ${Dir} MP ${MPFrom}). The NDI and LDI values for this record will be set to 9.99. Correct the problem and recalculate.`
@@ -267,27 +282,6 @@ function TenthMileProcessor() {
                     };
                 }
             };
-
-            const StandardRound = (pValue, pDecimalPlaces) => {
-                if (pDecimalPlaces < 0) {
-                    throw new Error("Decimal places cannot be negative");
-                }
-
-                const LDecimalSymbol = "."; // Changes based on country
-                const LValue = pValue.toString();
-                const LPos = LValue.indexOf(LDecimalSymbol);
-                const LNumDecimals = LValue.length - LPos - 1;
-
-                if (LPos > 0 && LNumDecimals > 0 && LNumDecimals > pDecimalPlaces) {
-                    let QValue = (1 / (10 ** (LNumDecimals + 1)));
-
-                    if (pValue < 0) QValue = -QValue;
-
-                    return Math.round((pValue + QValue) * Math.pow(10, pDecimalPlaces)) / Math.pow(10, pDecimalPlaces);
-                } else {
-                    return pValue;
-                }
-            }
 
             const calcGFP = (SDI, IRI) => {
                 if ((IRI >= 95 && IRI <= 170 && SDI > 3.2) || (IRI < 95 && SDI > 3.2 && SDI < 4.34)) {
@@ -363,6 +357,314 @@ function TenthMileProcessor() {
             });
         };
 
+        const buildContiguous = (jsonData) => {
+            const contiguous = [];
+            const noDistress = [];
+            const noMPD = [];
+            const noRut = [];
+
+            jsonData.forEach(item => {
+                item.Sum_Distress =
+                    item["Patt%AreaSl"] +
+                    item["Patt%AreaMod"] +
+                    item["Patt%AreaSev"] +
+                    item["Lng%AreaSl"] +
+                    item["Lng%AreaMod"] +
+                    item["Lng%AreaSev"] +
+                    item["Tr%AreaSl"] +
+                    item["Tr%AreaMod"] +
+                    item["Tr%AreaSev"] +
+                    item["WpPatt%AreaSl"] +
+                    item["WpPatt%AreaMod"] +
+                    item["WpPatt%AreaSev"] +
+                    item["WpLng%AreaSl"] +
+                    item["WpLng%AreaMod"] +
+                    item["WpLng%AreaSev"] +
+                    item["PCCCr%AreaSl"] +
+                    item["PCCCr%AreaMod"] +
+                    item["PCCCr%AreaSev"];
+            });
+
+            jsonData.sort((a, b) => {
+                return (
+                    a.Route.localeCompare(b.Route) ||
+                    a.Dir.localeCompare(b.Dir) ||
+                    a.FromMP - b.FromMP
+                );
+            });
+
+            // Contiguous
+            let i = 0;
+            while (i < jsonData.length) {
+                const item = jsonData[i];
+
+                let Rte = item.Route.trim();
+                let Dir = item.Dir.trim();
+
+                let contigStart = item.FromMP;
+                let contigEnd = contigStart + 0.1;
+                let latestDate = item.TestDate;
+                let SetNum = item["Set#"] ?? 0;
+
+                let j = i;
+                while (j + 1 < jsonData.length) {
+                    const currItem = jsonData[j];
+                    const nextItem = jsonData[j + 1];
+
+                    const MP1 = StandardRound(currItem.FromMP + 0.1, 2);
+                    const MP2 = StandardRound(nextItem.FromMP, 2);
+
+                    if (nextItem.Route.trim() === Rte && nextItem.Dir.trim() === Dir && StandardRound(MP2 - MP1, 2) <= 0) {
+                        contigEnd = nextItem.FromMP + 0.1;
+
+                        if (nextItem.TestDate > latestDate) {
+                            latestDate = nextItem.TestDate;
+                        }
+
+                        Rte = currItem.Route.trim();
+                        Dir = currItem.Dir.trim();
+                    } else {
+                        break;
+                    }
+
+                    j++;
+                }
+
+                // write section
+                contiguous.push({
+                    Rte,
+                    Dir,
+                    MPStart: StandardRound(contigStart, 1),
+                    MPEnd: StandardRound(contigEnd, 1),
+                    ProfilerDate: latestDate,
+                    Set_Num: SetNum
+                })
+
+                i = j + 1;
+            }
+
+            // No Distress
+            i = 0;
+            while (i < jsonData.length) {
+                const item = jsonData[i];
+
+                if (item.Sum_Distress !== 0) {
+                    i++;
+                    continue;
+                }
+
+                let Rte = item.Route.trim();
+                let Dir = item.Dir.trim();
+
+                let contigStart = item.FromMP;
+                let contigEnd = contigStart + 0.1;
+                let latestDate = item.TestDate;
+                let SetNum = item["Set#"]
+
+                let j = i;
+                while (j + 1 < jsonData.length) {
+                    const currItem = jsonData[j];
+                    const nextItem = jsonData[j + 1];
+                    const MP1 = StandardRound(currItem.FromMP + 0.1, 2);
+
+                    if (nextItem.Sum_Distress === 0) {
+                        const MP2 = StandardRound(nextItem.FromMP, 2);
+                        if (nextItem.Route.trim() === Rte && nextItem.Dir.trim() === Dir && StandardRound(MP2 - MP1, 2) <= 0) {
+                            contigEnd = nextItem.FromMP + 0.1;
+
+                            if (nextItem.TestDate > latestDate) {
+                                latestDate = nextItem.TestDate;
+                            }
+
+                            Rte = currItem.Route.trim();
+                            Dir = currItem.Dir.trim();
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+
+                    j++;
+                }
+
+                if (StandardRound(contigEnd - contigStart, 2) >= 0.3) {
+                    noDistress.push({
+                        Rte,
+                        Dir,
+                        MPStart: StandardRound(contigStart, 1),
+                        MPEnd: StandardRound(contigEnd, 1),
+                        ProfilerDate: latestDate,
+                        Set_Num: SetNum
+                    })
+                }
+
+                i = j + 1;
+            }
+
+            // No MPD
+            i = 0;
+            while (i < jsonData.length) {
+                const item = jsonData[i];
+
+                if (item.MPD !== 0) {
+                    i++;
+                    continue;
+                }
+
+                let Rte = item.Route.trim();
+                let Dir = item.Dir.trim();
+
+                let contigStart = item.FromMP;
+                let contigEnd = contigStart + 0.1;
+                let latestDate = item.TestDate;
+                let SetNum = item["Set#"]
+
+                let j = i;
+                while (j + 1 < jsonData.length) {
+                    const currItem = jsonData[j];
+                    const nextItem = jsonData[j + 1];
+                    const MP1 = StandardRound(currItem.FromMP + 0.1, 2);
+
+                    if (nextItem.MPD === 0) {
+                        const MP2 = StandardRound(nextItem.FromMP, 2);
+                        if (nextItem.Route.trim() === Rte && nextItem.Dir.trim() === Dir && StandardRound(MP2 - MP1, 2) <= 0) {
+                            contigEnd = nextItem.FromMP + 0.1;
+
+                            if (nextItem.TestDate > latestDate) {
+                                latestDate = nextItem.TestDate;
+                            }
+
+                            Rte = currItem.Route.trim();
+                            Dir = currItem.Dir.trim();
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+
+                    j++;
+                }
+
+                noMPD.push({
+                    Rte,
+                    Dir,
+                    MPStart: StandardRound(contigStart, 1),
+                    MPEnd: StandardRound(contigEnd, 1),
+                    ProfilerDate: latestDate,
+                    Set_Num: SetNum,
+                });
+
+                i = j + 1;
+            }
+
+            // No Rut
+            i = 0;
+            while (i < jsonData.length) {
+                const item = jsonData[i];
+
+                if (item.RutAvg !== 0 || item.MaxLtRut !== 0 || item.MaxRtRut !== 0) {
+                    i++;
+                    continue;
+                }
+
+                let Rte = item.Route.trim();
+                let Dir = item.Dir.trim();
+
+                let contigStart = item.FromMP;
+                let contigEnd = contigStart + 0.1;
+                let latestDate = item.TestDate;
+                let SetNum = item["Set#"]
+
+                let j = i;
+                while (j + 1 < jsonData.length) {
+                    const currItem = jsonData[j];
+                    const nextItem = jsonData[j + 1];
+                    const MP1 = StandardRound(currItem.FromMP + 0.1, 2);
+
+                    if (nextItem.RutAvg === 0 && nextItem.MaxLtRut === 0 && nextItem.MaxRtRut === 0) {
+                        const MP2 = StandardRound(nextItem.FromMP, 2);
+                        if (nextItem.Route.trim() === Rte && nextItem.Dir.trim() === Dir && StandardRound(MP2 - MP1, 2) <= 0) {
+                            contigEnd = nextItem.FromMP + 0.1;
+
+                            if (nextItem.TestDate > latestDate) {
+                                latestDate = nextItem.TestDate;
+                            }
+
+                            Rte = currItem.Route.trim();
+                            Dir = currItem.Dir.trim();
+                        } else {
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+
+                    j++;
+                }
+
+                noRut.push({
+                    Rte,
+                    Dir,
+                    MPStart: StandardRound(contigStart, 1),
+                    MPEnd: StandardRound(contigEnd, 1),
+                    ProfilerDate: latestDate,
+                    Set_Num: SetNum,
+                });
+
+                i = j + 1;
+            }
+
+            return {
+                contiguous,
+                noDistress,
+                noMPD,
+                noRut
+            };
+        };
+
+        const checkMissingMileposts = (jsonData, contiguous) => {
+            let Route = contiguous[0].Rte
+            let Direction = contiguous[0].Dir
+            let MPStart = contiguous[0].MPEnd
+
+            let i = 0
+            while (i + 1 < contiguous.length) {
+                const nextItem = contiguous[i + 1];
+
+                if (nextItem.Rte === Route && nextItem.Dir === Direction && Math.round((nextItem.MPStart - MPStart) * 10) / 10 === 0.1) {
+                    //const newItem = { ...nextItem };
+                    const newItem = jsonData.find(item =>
+                        item.Route === Route &&
+                        item.Dir === Direction &&
+                        item.FromTo === MPStart
+                    );
+
+                    if (newItem) {
+                        const newItemClone = { ...newItem };
+
+                        newItemClone.FromMP = MPStart;
+                        newItemClone.ToMP = Math.round((newItemClone.MPStart - MPStart) * 10) / 10
+                        jsonData.push(newItemClone);
+                    }
+                }
+
+                Route = nextItem.Rte;
+                Direction = nextItem.Dir;
+                MPStart = nextItem.MPEnd;
+                i++;
+            }
+        };
+
+        const getDistance = (newLat, oldLat, newLon, oldLon) => {
+            const toRadians = degrees => degrees * Math.PI / 180;
+
+            let cosValue = Math.cos(toRadians(90 - newLat)) * Math.cos(toRadians(90 - oldLat)) + Math.sin(toRadians(90 - newLat)) * Math.sin(toRadians(90 - oldLat)) * Math.cos(toRadians(newLon - oldLon));
+            cosValue = Math.min(1, Math.max(-1, cosValue));
+            return (Math.acos(cosValue) * 6371000) * 0.00062137;
+        }
+
         if (!selectedFile) {
             alert("Please select an Excel file first.");
             return;
@@ -407,7 +709,7 @@ function TenthMileProcessor() {
             return {
                 ...row,
                 FromMP: fromMP,
-                ToMP: fromMP + 0.1,
+                ToMP: Math.round((fromMP + 0.1) * 10) / 10,
                 Route: route,
                 SDI: null,
                 NDI: null,
@@ -452,8 +754,211 @@ function TenthMileProcessor() {
         // Calculate NDI/LDI/SDI
         calcSDI(jsonData);
 
+        // Build contiguous sections
+        const { contiguous, noDistress, noMPD, noRut } = buildContiguous(jsonData);
 
-        console.log(jsonData);
+        // Check for gaps in contiguous
+        checkMissingMileposts(jsonData, contiguous);
+
+        const routes = [...new Set(jsonData.map(item => item.Route))];
+        const GPSData = await getAllGPSData(routes);
+
+        const GPSCheck = [];
+
+        function bankersRound(value, decimals = 0) {
+            const factor = Math.pow(10, decimals);
+            const scaled = value * factor;
+            const rounded = Math.round(scaled);
+
+            if (Math.abs(scaled - (rounded - 0.5)) < Number.EPSILON) {
+                return (rounded - 1) / factor;
+            }
+
+            if (Math.abs(scaled - (rounded + 0.5)) < Number.EPSILON) {
+                return rounded % 2 === 0
+                    ? rounded / factor
+                    : (rounded + 1) / factor;
+            }
+
+            return rounded / factor;
+        }
+
+        let primaryCount = 0;
+        let secondaryCount = 0;
+
+        function normalizeText(value) {
+            return String(value ?? "").trim().toUpperCase();
+        }
+
+        function normalizeMP(value) {
+            return Number(Number(value).toFixed(3));
+        }
+
+        function sameMP(a, b) {
+            return normalizeMP(a) === normalizeMP(b);
+        }
+
+        function sameRoute(a, b) {
+            return normalizeText(a) === normalizeText(b);
+        }
+
+        function sameDir(a, b) {
+            return normalizeText(a) === normalizeText(b);
+        }
+
+
+        // Primary SQL equivalent:
+        // tblGPS INNER JOIN tblProfilerUpdate ON GPS.MPFrom = Profiler.FromMP
+        for (const gps of GPSData) {
+
+            for (const item of jsonData) {
+
+                if (
+                    !sameRoute(gps.Rte, item.Route) ||
+                    !sameDir(gps.Dir, item.Dir) ||
+                    !sameMP(gps.MPFrom, item.FromMP)
+                ) {
+                    continue;
+                }
+
+                if (
+                    item.FromLatitude == null ||
+                    item.FromLongitude == null
+                ) {
+                    continue;
+                }
+
+                primaryCount++;
+
+                GPSCheck.push({
+                    Source: "Primary",
+                    MatchedMP: gps.MPFrom,
+                    Route: item.Route,
+                    Direction: item.Dir,
+                    FromMP: item.FromMP,
+                    ToMP: item.ToMP,
+                    Latitude: item.FromLatitude,
+                    Longitude: item.FromLongitude,
+                    GIS_Latitude: gps.Latitude,
+                    GIS_Longitude: gps.Longitude,
+                    Diff_Miles: bankersRound(
+                        getDistance(
+                            item.FromLatitude,
+                            gps.Latitude,
+                            item.FromLongitude,
+                            gps.Longitude
+                        ),
+                        2
+                    )
+                });
+            }
+        }
+
+
+        // Secondary SQL equivalent:
+        // tblGPS INNER JOIN tblProfilerUpdate ON GPS.MPFrom = Profiler.ToMP
+        for (const gps of GPSData) {
+
+            for (const item of jsonData) {
+
+                if (
+                    !sameRoute(gps.Rte, item.Route) ||
+                    !sameDir(gps.Dir, item.Dir) ||
+                    !sameMP(gps.MPFrom, item.ToMP)
+                ) {
+                    continue;
+                }
+
+                if (
+                    item.ToLatitude == null ||
+                    item.ToLongitude == null
+                ) {
+                    continue;
+                }
+
+                secondaryCount++;
+
+                GPSCheck.push({
+                    Source: "Secondary",
+                    MatchedMP: gps.MPFrom,
+                    Route: item.Route,
+                    Direction: item.Dir,
+                    FromMP: item.FromMP,
+                    ToMP: item.ToMP,
+                    Latitude: item.ToLatitude,
+                    Longitude: item.ToLongitude,
+                    GIS_Latitude: gps.Latitude,
+                    GIS_Longitude: gps.Longitude,
+                    RawDistance: getDistance(
+                        item.ToLatitude,
+                        gps.Latitude,
+                        item.ToLongitude,
+                        gps.Longitude
+                    ),
+                    Diff_Miles: bankersRound(
+                        getDistance(
+                            item.ToLatitude,
+                            gps.Latitude,
+                            item.ToLongitude,
+                            gps.Longitude
+                        ),
+                        2
+                    )
+                });
+            }
+        }
+
+        const filteredGPS = GPSCheck.filter((item) => item.Diff_Miles >= 0.1); // few extra, trying to replicate Access Rounding, but not perfect
+
+        // Query Road Sections and build conflict array
+        const sectionData = await getSectionData();
+        const conflicts = [];
+
+        for (const c of contiguous) {
+            for (const s of sectionData) {
+                if (s.Rte !== c.Rte || s.Dir !== c.Dir) continue;
+
+                const overlaps =
+                    (s.MPStart >= c.MPStart && s.MPStart < c.MPEnd) ||
+                    (s.MPEnd <= c.MPEnd && s.MPEnd > c.MPStart) ||
+                    (s.MPStart <= c.MPStart && s.MPEnd >= c.MPEnd);
+
+                if (overlaps) {
+                    conflicts.push({
+                        Rte: s.Rte,
+                        Dir: s.Dir,
+                        MPStart: s.MPStart,
+                        MPEnd: s.MPEnd
+                    });
+                }
+            }
+        }
+
+        // Remove dupes
+        const distinctConflicts = [
+            ...new Map(
+                conflicts.map(r => [
+                    `${r.Rte}|${r.Dir}|${r.MPStart}|${r.MPEnd}`,
+                    r
+                ])
+            ).values()
+        ];
+
+        // Print stuff cuz no tables yet
+        console.log(contiguous);
+        console.log(noDistress);
+        console.log(noMPD);
+        console.log(noRut);
+
+        // IRI = 25
+        const IRI25 = jsonData.filter((item) => item.IriAvg === 25);
+        console.log(IRI25);
+
+        // GPS Check where diff miles >= 0.1
+        console.log(filteredGPS);
+
+        // Conflicts
+        console.log(distinctConflicts);
     };
 
     return (

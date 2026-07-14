@@ -47,10 +47,10 @@ export async function insertNewStatus(payload) {
     }
 
     const { data, error } = await supabase
-      .from("tblCollectionLog")
-      .insert([rows])
-      .select();
-    
+        .from("tblCollectionLog")
+        .insert([rows])
+        .select();
+
     if (error) {
         console.error("Insert error: ", error);
         throw error;
@@ -92,12 +92,12 @@ export async function updateExistingStatus(payload) {
     }
 
     const { data, error } = await supabase
-      .from("tblCollectionLog")
-      .update([rows])
-      .eq("SetNum", payload.setsReceived)
-      .eq("DateReceived", payload.dateReceived)
-      .select();
-    
+        .from("tblCollectionLog")
+        .update([rows])
+        .eq("SetNum", payload.setsReceived)
+        .eq("DateReceived", payload.dateReceived)
+        .select();
+
     if (error) {
         console.error("Insert error: ", error);
         throw error;
@@ -131,32 +131,32 @@ export async function getReruns() {
 }
 
 export async function updateReruns(rows) {
-  const inserts = rows.filter(row => !row.ID);
-  const updates = rows.filter(row => row.ID);
+    const inserts = rows.filter(row => !row.ID);
+    const updates = rows.filter(row => row.ID);
 
-  const cleanInserts = inserts.map(({ ID, ...rest }) => rest);
+    const cleanInserts = inserts.map(({ ID, ...rest }) => rest);
 
-  const insertPromise = cleanInserts.length
-    ? supabase.from("tblReruns").insert(cleanInserts)
-    : Promise.resolve();
+    const insertPromise = cleanInserts.length
+        ? supabase.from("tblReruns").insert(cleanInserts)
+        : Promise.resolve();
 
-  const updatePromise = updates.length
-    ? Promise.all(
-        updates.map(row =>
-          supabase
-            .from("tblReruns")
-            .update(row)
-            .eq("ID", row.ID)
+    const updatePromise = updates.length
+        ? Promise.all(
+            updates.map(row =>
+                supabase
+                    .from("tblReruns")
+                    .update(row)
+                    .eq("ID", row.ID)
+            )
         )
-      )
-    : Promise.resolve();
+        : Promise.resolve();
 
-  const [insertResult, updateResult] = await Promise.all([
-    insertPromise,
-    updatePromise,
-  ]);
+    const [insertResult, updateResult] = await Promise.all([
+        insertPromise,
+        updatePromise,
+    ]);
 
-  return { success: true, message: "Changes saved successfully" };
+    return { success: true, message: "Changes saved successfully" };
 }
 
 export async function updateDeleted(deletedIds) {
@@ -164,11 +164,41 @@ export async function updateDeleted(deletedIds) {
         .from("tblReruns")
         .delete()
         .in("ID", deletedIds);
-    
+
     if (error) {
         console.error("Insert error: ", error);
         throw error;
     } else {
         return { success: true };
     }
+}
+
+// Map Queries
+
+export async function getCollectionMapData() {
+    const pageSize = 1000;
+    let allData = [];
+    let from = 0;
+    let to = pageSize - 1;
+
+    while (true) {
+        const { data, error } = await supabase
+            .from("tblCollectionMapData")
+            .select("*")
+            .range(from, to);
+
+        if (error) throw error;
+
+        allData = allData.concat(data);
+
+        // Stop when the last page is smaller than requested
+        if (data.length < pageSize) {
+            break;
+        }
+
+        from += pageSize;
+        to += pageSize;
+    }
+
+    return allData;
 }

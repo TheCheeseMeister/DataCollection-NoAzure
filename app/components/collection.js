@@ -1,48 +1,50 @@
 import { getStatusInputTables, insertNewStatus, updateExistingStatus, getCollectionStatus, getReruns, updateReruns, updateDeleted } from "../utils/supabase/collection-queries";
 import { exportToPDF } from "../utils/pdf-export";
 
-import React, {useRef, useMemo, useEffect, useState} from 'react';
+import React, { useRef, useMemo, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query'
 import { useReactTable, getCoreRowModel, getSortedRowModel, flexRender } from '@tanstack/react-table'
 
 import { AgGridReact } from "ag-grid-react";
 
+import OpenLayersMap from "./map";
+
 export default function collection() {
-    const tabs = [
-        { id: "statusInput", label: "Network Collection Tracker"},
-        { id: "collection", label: "Network Collection Status"},
-        { id: "reruns", label: "Network Rerun Tracker"}
-    ];
+  const tabs = [
+    { id: "statusInput", label: "Network Collection Tracker" },
+    { id: "collection", label: "Network Collection Status" },
+    { id: "reruns", label: "Network Rerun Tracker" }
+  ];
 
-    const [activeTab, setActiveTab] = useState(tabs[0].id);
+  const [activeTab, setActiveTab] = useState(tabs[0].id);
 
-    return(
-      <div className="flex flex-col h-full overflow-hidden">
-        <div className="text-black flex max-w-screen bg-gray-400 h-12">
-            {tabs.map((tab) => (
-                <button className=
-                {
-                `text-black border-2 text-center w-56 h-12 
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="text-black flex max-w-screen bg-gray-400 h-12">
+        {tabs.map((tab) => (
+          <button className=
+            {
+              `text-black border-2 text-center w-56 h-12 
                 ${activeTab === tab.id ? "bg-green-200 bold hover:bg-green-400" : "bg-white hover:bg-gray-300"}`
-                }
-                key={tab.id} 
-                onClick={() => setActiveTab(tab.id)} 
-                style={{
-                    fontWeight: activeTab === tab.id ? "bold" : "normal",
-                }}>
-                {tab.label}
-                </button>
-            ))}
-        </div>
-
-        {/* Forms */}
-        <div className="bg-[#D1EAF0] w-full h-full overflow-y-auto">
-            {activeTab === "statusInput" && <StatusInputForm />}
-            {activeTab === "collection" && <CollectionForm />}
-            {activeTab === "reruns" && <RerunsForm />}
-        </div>
+            }
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            style={{
+              fontWeight: activeTab === tab.id ? "bold" : "normal",
+            }}>
+            {tab.label}
+          </button>
+        ))}
       </div>
-    );
+
+      {/* Forms */}
+      <div className="bg-[#D1EAF0] w-full h-full overflow-y-auto">
+        {activeTab === "statusInput" && <StatusInputForm />}
+        {activeTab === "collection" && <CollectionForm />}
+        {activeTab === "reruns" && <RerunsForm />}
+      </div>
+    </div>
+  );
 }
 
 function StatusInputForm() {
@@ -85,7 +87,7 @@ function StatusInputForm() {
 
   const handleField = (event) => {
     const { name, value, type, checked } = event.target;
-    
+
     if (name === "recordType") {
       setFormData({
         ...initialFormData,
@@ -108,7 +110,7 @@ function StatusInputForm() {
       setFormData((prev) => ({
         ...prev,
         sets: value,
-        
+
         SDIFileName: selectedRow["SDIFileName"] ?? "",
         setsReceived: selectedRow["SetNum"] ?? "",
         dateReceived: selectedRow["DateReceived"] ?? "",
@@ -132,8 +134,8 @@ function StatusInputForm() {
         drivesFormatted: selectedRow["DrivesFormatted"] ?? "",
         missingSets: selectedRow["MissingSets"] ?? "",
         retestRequired: selectedRow["RetestRequired"] === true ||
-                selectedRow["RetestRequired"] === 1 ||
-                selectedRow["RetestRequired"] === "true",
+          selectedRow["RetestRequired"] === 1 ||
+          selectedRow["RetestRequired"] === "true",
         retestSets: selectedRow["RetestSets"] ?? "",
         pavementTemp: selectedRow["PavementTemperature"] ?? "",
         comments: selectedRow["Comments"] ?? "",
@@ -165,15 +167,15 @@ function StatusInputForm() {
   });
 
   const assignedUserOptions = useMemo(() => {
-      const users = inputTables?.users ?? [];
+    const users = inputTables?.users ?? [];
 
-      return [...new Set([
-          ...users.map(u => u.UserName),
-          formData.assignedTo,
-      ])].filter(Boolean);
+    return [...new Set([
+      ...users.map(u => u.UserName),
+      formData.assignedTo,
+    ])].filter(Boolean);
   }, [inputTables?.users, formData.assignedTo]);
-  
-  const handleSubmit = async() => {
+
+  const handleSubmit = async () => {
     const payload = { ...formData };
 
     const res = formData.recordType === "New Record" ? await insertNewStatus(payload) : await updateExistingStatus(payload);
@@ -181,49 +183,49 @@ function StatusInputForm() {
     alert(res.message);
   };
 
-  return(
+  return (
     <form className='text-black p-6 w-full max-w-6xl mx-auto'>
       <div className="flex justify-center gap-6 mb-8">
         <div className="w-36">
           <label className="block text-sm mb-1 font-bold">
-              Record Type
+            Record Type
           </label>
           <select name="recordType" value={formData.recordType} onChange={handleField} className="w-full border p-2 rounded bg-white">
-              <option value="New Record">New Record</option>
-              <option value="Existing Record">Existing Record</option>
+            <option value="New Record">New Record</option>
+            <option value="Existing Record">Existing Record</option>
           </select>
         </div>
 
         <div className="w-36">
           <label className="block text-sm mb-1 font-bold">
-              Collection Year
+            Collection Year
           </label>
           <select name="collectionYear" value={formData.collectionYear} onChange={handleField} className="w-full border p-2 rounded bg-white">
-              <option value="2026">2026</option>
-              <option value="2025">2025</option>
-              <option value="2024">2024</option>
-              <option value="2023">2023</option>
-              <option value="2022">2022</option>
-              <option value="2021">2021</option>
+            <option value="2026">2026</option>
+            <option value="2025">2025</option>
+            <option value="2024">2024</option>
+            <option value="2023">2023</option>
+            <option value="2022">2022</option>
+            <option value="2021">2021</option>
           </select>
         </div>
 
         <div className="w-64">
           <label className="block text-sm mb-1 font-bold">
-              Sets
+            Sets
           </label>
           <select name="sets" value={formData.sets} onChange={handleField} className={`w-full border p-2 rounded bg-white ${formData.recordType === "New Record" ? "opacity-50 cursor-not-allowed" : ""}`} disabled={formData.recordType === "New Record"}>
-              <option value="">-- Select --</option>
-              
-              {inputTables?.collectionLog
-                .filter((item) => item["CollectionYear"] === Number(formData.collectionYear))
-                .sort((a, b) => a["SetNum"].localeCompare(b["SetNum"]))
-                .map((item, index) => (
-                  <option key={`set-${index}`} value={item["SetNum"]}>
-                    {item["SetNum"]}
-                  </option>
-                ))
-              }
+            <option value="">-- Select --</option>
+
+            {inputTables?.collectionLog
+              .filter((item) => item["CollectionYear"] === Number(formData.collectionYear))
+              .sort((a, b) => a["SetNum"].localeCompare(b["SetNum"]))
+              .map((item, index) => (
+                <option key={`set-${index}`} value={item["SetNum"]}>
+                  {item["SetNum"]}
+                </option>
+              ))
+            }
           </select>
         </div>
       </div>
@@ -234,179 +236,179 @@ function StatusInputForm() {
           <div className="space-y-2">
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  SDI File Name *
+                SDI File Name *
               </label>
               <input name="SDIFileName" value={formData.SDIFileName} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Sets Received *
+                Sets Received *
               </label>
               <input name="setsReceived" value={formData.setsReceived} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Date Received
+                Date Received
               </label>
               <input type="date" name="dateReceived" value={formData.dateReceived} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Date Collected
+                Date Collected
               </label>
               <input type="date" name="dateCollected" value={formData.dateCollected} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Assigned To
+                Assigned To
               </label>
               <select name="assignedTo" value={formData.assignedTo} onChange={handleField} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-                  
-                  {formData.recordType === "New Record" ? inputTables?.users.map((item, index) => (
-                    <option key={`userName-${index}`} value={item.UserName}>
-                      {item.UserName}
-                    </option>
-                  )) : assignedUserOptions.map((item, index) => (
-                    <option key={`userName-${index}`} value={item}>
-                      {item}
-                    </option>
-                  ))}
+                <option value="">-- Select --</option>
+
+                {formData.recordType === "New Record" ? inputTables?.users.map((item, index) => (
+                  <option key={`userName-${index}`} value={item.UserName}>
+                    {item.UserName}
+                  </option>
+                )) : assignedUserOptions.map((item, index) => (
+                  <option key={`userName-${index}`} value={item}>
+                    {item}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Total Miles
+                Total Miles
               </label>
               <input name="totalMiles" value={formData.totalMiles} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  First/Last Image Check
+                First/Last Image Check
               </label>
               <input type="date" name="imageCheck" value={formData.imageCheck} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Raw Files Processed Start Date
+                Raw Files Processed Start Date
               </label>
               <input type="date" name="rawStart" value={formData.rawStart} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Raw Files Processed End Date
+                Raw Files Processed End Date
               </label>
               <input type="date" name="rawEnd" value={formData.rawEnd} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Beginning/Ending Offset Fixed
+                Beginning/Ending Offset Fixed
               </label>
               <input type="date" name="offsetFixed" value={formData.offsetFixed} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Weather
+                Weather
               </label>
               <select name="weather" value={formData.weather} onChange={handleField} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-                  <option value="Sunny">Sunny</option>
-                  <option value="Cloudy">Cloudy</option>
-                  <option value="Overcast">Overcast</option>
+                <option value="">-- Select --</option>
+                <option value="Sunny">Sunny</option>
+                <option value="Cloudy">Cloudy</option>
+                <option value="Overcast">Overcast</option>
               </select>
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Air Temperature
+                Air Temperature
               </label>
               <input name="airTemp" value={formData.airTemp} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
           </div>
-            
+
           {/* Middle Column */}
           <div className="space-y-2">
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Autocrack Run Start Date
+                Autocrack Run Start Date
               </label>
               <input type="date" name="autocrackStart" value={formData.autocrackStart} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Autocrack Run End Date
+                Autocrack Run End Date
               </label>
               <input type="date" name="autocrackEnd" value={formData.autocrackEnd} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Autoclass Run Start Date
-              </label> 
+                Autoclass Run Start Date
+              </label>
               <input type="date" name="autoclassStart" value={formData.autoclassStart} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Autoclass Run End Date
+                Autoclass Run End Date
               </label>
               <input type="date" name="autoclassEnd" value={formData.autoclassEnd} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  10th Mile Report Generated
+                10th Mile Report Generated
               </label>
               <input type="date" name="tenthMileReport" value={formData.tenthMileReport} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Pathview Version
+                Pathview Version
               </label>
               <select name="pathviewVersion" value={formData.pathviewVersion} onChange={handleField} className={`w-71 border p-2 rounded bg-white`}>
-                  <option value="">-- Select --</option>
-                  <option value="1514">1514</option>
-                  <option value="1409">1409</option>
-                  <option value="1507">1507</option>
-                  <option value="1498">1498</option>
-                  <option value="1494">1494</option>
-                  <option value="1492">1492</option>
+                <option value="">-- Select --</option>
+                <option value="1514">1514</option>
+                <option value="1409">1409</option>
+                <option value="1507">1507</option>
+                <option value="1498">1498</option>
+                <option value="1494">1494</option>
+                <option value="1492">1492</option>
               </select>
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Date Backed Up
+                Date Backed Up
               </label>
               <input type="date" name="dateBackedUp" value={formData.dateBackedUp} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Drives Formatted
+                Drives Formatted
               </label>
               <input type="date" name="drivesFormatted" value={formData.drivesFormatted} onChange={handleField} className={`w-71 border p-2 rounded bg-white h-9`} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Missing Sets
+                Missing Sets
               </label>
               <input name="missingSets" value={formData.missingSets} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
-            
+
             <div className="mb-3.5">
               <label className="block text-sm mb-1 font-bold">
                 Retest Required
@@ -423,14 +425,14 @@ function StatusInputForm() {
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Retest Sets
+                Retest Sets
               </label>
               <input type="text" name="retestSets" value={formData.retestSets} onChange={handleField} className={`w-71 border p-2 rounded bg-white ${formData.retestRequired === false ? "opacity-50 cursor-not-allowed" : ""}`} disabled={formData.retestRequired === false} />
             </div>
 
             <div>
               <label className="block text-sm mb-1 font-bold">
-                  Pavement Temperature
+                Pavement Temperature
               </label>
               <input name="pavementTemp" value={formData.pavementTemp} onChange={handleField} className={`w-71 border p-2 rounded bg-white`} />
             </div>
@@ -481,23 +483,23 @@ function StatusInputForm() {
 
             <div className="w-128">
               <label className="block text-sm mb-1 font-bold">
-                  Comments
+                Comments
               </label>
               <textarea name="comments" value={formData.comments} onChange={handleField} className="w-full border p-2 rounded h-32 bg-white" />
             </div>
 
             <div className="w-128">
               <label className="block text-sm mb-1 font-bold">
-                  Collection Issues
+                Collection Issues
               </label>
               <textarea name="collectionIssues" value={formData.collectionIssues} onChange={handleField} className="w-full border p-2 rounded h-32 bg-white" />
             </div>
 
             {/* Button */}
             <div className="mt-8 flex justify-center">
-                <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600" onClick={handleSubmit}>
-                  {formData.recordType === "New Record" ? "Add New" : "Update Existing"}
-                </button>
+              <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600" onClick={handleSubmit}>
+                {formData.recordType === "New Record" ? "Add New" : "Update Existing"}
+              </button>
             </div>
           </div>
         </div>
@@ -538,7 +540,7 @@ function CollectionForm() {
 
   const percentProcessed = useMemo(() => {
     const log = (collectionStatus?.collectionLog ?? [])
-    .filter(r => r.TenthMileReport != null);
+      .filter(r => r.TenthMileReport != null);
 
     const collected = log.reduce(
       (sum, r) => sum + (r.MilesCollected ?? 0),
@@ -547,9 +549,9 @@ function CollectionForm() {
 
     return (collected / 5039.31).toFixed(3) * 100
   }, [collectionStatus]);
-  
+
   const [colDefs, setColDefs] = useState([
-    { field: "Rte"},
+    { field: "Rte" },
     { field: "Dir" },
     { field: "MPStart" },
     { field: "MPEnd" },
@@ -565,43 +567,51 @@ function CollectionForm() {
     editable: true,
   }))
 
-  return(
+  return (
     <div className="flex flex-col items-center justify-center min-h-[90vh] gap-4">
       {/* Warning label */}
-      <div className="text-sm font-semibold text-red-600 bg-white p-1">
-        Percentages below may be over 100% due to re-collected sections
-      </div>
-
-      <div className="flex gap-8">
-        <div className="flex items-center gap-2">
-          <label className="block text-sm mb-1 font-bold text-black ">Percent Collected of Network</label>
-          <span className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black flex items-center justify-left">
-            {`${percentCollected} %`}
-          </span>
+      <div className="mr-200">
+        <div className="text-sm font-semibold text-red-600 bg-white p-1">
+          Percentages below may be over 100% due to re-collected sections
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="block text-sm mb-1 font-bold text-black">Percent Processed of Network</label>
-          <span className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black flex items-center justify-left">
-            {`${percentProcessed} %`}
-          </span>
+        <div className="flex gap-8">
+          <div className="flex items-center gap-2">
+            <label className="block text-sm mb-1 font-bold text-black ">Percent Collected of Network</label>
+            <span className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black flex items-center justify-left">
+              {`${percentCollected} %`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="block text-sm mb-1 font-bold text-black">Percent Processed of Network</label>
+            <span className="w-24 h-8 border border-gray-300 p-2 rounded bg-white text-black flex items-center justify-left">
+              {`${percentProcessed} %`}
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="h-[800px] w-3/4">
-        <AgGridReact 
-          rowData={rowData} 
-          pagination={true} 
-          columnDefs={colDefs} 
-          defaultColDef={defaultColDef}
-          onCellValueChanged={(params) => {
-            setRowData((prev) => 
-              prev.map((row, i) => 
-                i === params.node.rowIndex ? params.data : row
-              )
-            );
-          }}
-        />
+      <div className="flex gap-6 w-full justify-center items-start">
+        <div className="h-[800px] w-3/5">
+          <AgGridReact
+            rowData={rowData}
+            pagination={true}
+            columnDefs={colDefs}
+            defaultColDef={defaultColDef}
+            onCellValueChanged={(params) => {
+              setRowData((prev) =>
+                prev.map((row, i) =>
+                  i === params.node.rowIndex ? params.data : row
+                )
+              );
+            }}
+          />
+        </div>
+
+        <div className="w-[800px] h-[800px] border-4 border-gray-500 box-border overflow-hidden">
+          <OpenLayersMap />
+        </div>
       </div>
     </div>
   );
@@ -662,7 +672,7 @@ function RerunsForm() {
   }, [reruns]);
 
   const [colDefs, setColDefs] = useState([
-    { field: "Route"},
+    { field: "Route" },
     { field: "Direction" },
     { field: "MPStart" },
     { field: "MPEnd" },
@@ -716,7 +726,7 @@ function RerunsForm() {
     await refetch();
   };
 
-  return(
+  return (
     <div className="flex flex-col items-start justify-center min-h-[90vh] gap-4">
       <div className="flex">
         <div className="flex items-center gap-2 ml-75">
@@ -737,27 +747,27 @@ function RerunsForm() {
 
         <div className="flex ml-227">
           <div className="flex justify-center">
-              <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center" onClick={addRow}>
-                Add Row
-              </button>
+            <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center" onClick={addRow}>
+              Add Row
+            </button>
           </div>
           <div className="flex justify-center">
-              <button type="button" className="ml-4 bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center" onClick={handleSave}>
-                Save Changes
-              </button>
+            <button type="button" className="ml-4 bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 h-8 flex items-center justify-center" onClick={handleSave}>
+              Save Changes
+            </button>
           </div>
         </div>
       </div>
 
       <div className="h-[800px] w-3/4 mx-auto">
-        <AgGridReact 
-          rowData={filteredRowData} 
-          pagination={false} 
-          columnDefs={colDefs} 
+        <AgGridReact
+          rowData={filteredRowData}
+          pagination={false}
+          columnDefs={colDefs}
           defaultColDef={defaultColDef}
           onCellValueChanged={(params) => {
-            setRowData((prev) => 
-              prev.map((row, i) => 
+            setRowData((prev) =>
+              prev.map((row, i) =>
                 i === params.node.rowIndex ? params.data : row
               )
             );
@@ -767,9 +777,9 @@ function RerunsForm() {
 
       {/* Button */}
       <div className="mt-4 ml-482 flex justify-center">
-          <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600" onClick={() => exportToPDF(filteredRowData, colDefs)}>
-            Export to PDF
-          </button>
+        <button type="button" className="bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600" onClick={() => exportToPDF(filteredRowData, colDefs)}>
+          Export to PDF
+        </button>
       </div>
     </div>
   );

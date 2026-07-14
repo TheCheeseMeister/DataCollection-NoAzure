@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getDirections, getGPSData, getSectionData, getAllGPSData } from '../utils/supabase/processor-queries';
 
 import * as XLSX from "xlsx";
+import { AgGridReact, agGridReact } from 'ag-grid-react';
 
 export default function processing() {
     const tabs = [
@@ -45,6 +46,44 @@ function TenthMileProcessor() {
     const fileInputRef = useRef(null);
     const [fileName, setFileName] = useState("");
     const [selectedFile, setSelectedFile] = useState(null);
+
+    const [results, setResults] = useState({
+        contiguous: [],
+        distinctConflicts: [],
+        filteredGPS: [],
+        noRut: [],
+        noDistress: [],
+        IRI25: [],
+        noMPD: [],
+    });
+
+    function ResultGrid({ title, data }) {
+        const columnDefs = React.useMemo(() => {
+            if (!data.length) return [];
+
+            return Object.keys(data[0]).map((key) => ({
+                field: key,
+                sortable: true,
+                filter: true,
+            }));
+        }, [data]);
+
+        return (
+            <div className="rounded text-black">
+                <h2 className="font-bold mb-2">{title}</h2>
+
+                <div
+                    className='h-120 w-full'
+                >
+                    <AgGridReact
+                        rowData={data}
+                        columnDefs={columnDefs}
+                        defaultColDef={{ flex: 1, minWidth: 120 }}
+                    />
+                </div>
+            </div>
+        );
+    }
 
     const handleFileChange = (e) => {
         const file = e.target.files[0];
@@ -959,10 +998,21 @@ function TenthMileProcessor() {
 
         // Conflicts
         console.log(distinctConflicts);
+
+        setResults({
+            contiguous,
+            distinctConflicts,
+            filteredGPS,
+            noRut,
+            noDistress,
+            IRI25,
+            noMPD,
+        });
     };
 
     return (
-        <div className="flex items-center gap-3 p-4">
+        <div className="p-4">
+            <div className="flex items-center gap-3">
             <label className="text-sm font-bold text-black">
                 File:
             </label>
@@ -998,6 +1048,48 @@ function TenthMileProcessor() {
                     onChange={handleFileChange}
                     className="hidden"
                 />
+            </div>
+            </div>
+
+            <div className="mt-6 space-y-6">
+                <div className="grid grid-cols-4 gap-4">
+                    <ResultGrid
+                        title="Currently Loaded Section Info"
+                        data={results.contiguous}
+                    />
+
+                    <ResultGrid
+                        title="Road Sections in PMSDatabase"
+                        data={results.distinctConflicts}
+                    />
+
+                    <ResultGrid
+                        title="GPS Check"
+                        data={results.filteredGPS}
+                    />
+
+                    <ResultGrid
+                        title="Rut = 0"
+                        data={results.noRut}
+                    />
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                    <ResultGrid
+                        title="No Distresses Found"
+                        data={results.noDistress}
+                    />
+
+                    <ResultGrid
+                        title="IRI = 25"
+                        data={results.IRI25}
+                    />
+
+                    <ResultGrid
+                        title="No Macro Texture (MPD) Found"
+                        data={results.noMPD}
+                    />
+                </div>
             </div>
         </div>
     );

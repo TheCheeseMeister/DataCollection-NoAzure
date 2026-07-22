@@ -1013,42 +1013,42 @@ function TenthMileProcessor() {
     return (
         <div className="p-4">
             <div className="flex items-center gap-3">
-            <label className="text-sm font-bold text-black">
-                File:
-            </label>
+                <label className="text-sm font-bold text-black">
+                    File:
+                </label>
 
-            <div className="flex items-center gap-2 flex-1">
-                <input
-                    className="w-64 h-8 border border-gray-500 rounded px-2 bg-white text-sm text-black"
-                    value={fileName}
-                    readOnly
-                    placeholder="No file selected"
-                />
+                <div className="flex items-center gap-2 flex-1">
+                    <input
+                        className="w-64 h-8 border border-gray-500 rounded px-2 bg-white text-sm text-black"
+                        value={fileName}
+                        readOnly
+                        placeholder="No file selected"
+                    />
 
-                <button
-                    type="button"
-                    onClick={() => fileInputRef.current.click()}
-                    className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
-                >
-                    Browse
-                </button>
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current.click()}
+                        className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                    >
+                        Browse
+                    </button>
 
-                <button
-                    type="button"
-                    onClick={handleImport}
-                    className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
-                >
-                    Import
-                </button>
+                    <button
+                        type="button"
+                        onClick={handleImport}
+                        className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                    >
+                        Import
+                    </button>
 
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".xlsx,.xls"
-                    onChange={handleFileChange}
-                    className="hidden"
-                />
-            </div>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleFileChange}
+                        className="hidden"
+                    />
+                </div>
             </div>
 
             <div className="mt-6 space-y-6">
@@ -1096,9 +1096,689 @@ function TenthMileProcessor() {
 }
 
 function RideQualityChecker() {
+    const [importType, setImportType] = useState("");
+
+    const fieldcrewRef = useRef(null);
+    const [fieldcrewSheet, setFieldcrewSheet] = useState("");
+    const [selectedFieldcrewSheet, setSelectedFieldcrewSheet] = useState(null);
+
+    const individualTestsRef = useRef(null);
+    const [individualTestsText, setIndividualTestsText] = useState("");
+    const [individualTestFiles, setIndividualTestFiles] = useState([]);
+
+    const [rawPayAdjustments, setRawPayAdjustments] = useState([]);
+    const [MPAdjustments, setMPAdjustments] = useState([]);
+
+    const handleSheetChange = (e) => {
+        const file = e.target.files[0];
+
+        if (!file) return;
+
+        setFieldcrewSheet(file.name);
+        setSelectedFieldcrewSheet(file);
+    }
+
+    const handleIndividualTestsChange = (e) => {
+        const files = Array.from(e.target.files);
+
+        if (!files.length) return;
+
+        setIndividualTestsText(`${files.length} files selected`);
+        setIndividualTestFiles(files);
+    }
+
+    const importDynatest = async () => {
+        function formatFieldCrewData(fieldcrewArr) {
+            const formattedFieldCrew = fieldcrewArr
+                .filter(row => {
+                    const route = String(row["PAVEMENT MANAGEMENT AND TECHNOLOGY"] || "").trim();
+                    return /^\d+[A-Za-z]?$/.test(route);
+                })
+                .map(row => {
+                    // Parse comments before building row
+                    const comments = row["__EMPTY_5"] || "";
+                    const laneLoc = comments.indexOf("L");
+                    const passLoc = comments.indexOf("P");
+                    const LaneID = laneLoc !== -1 && passLoc !== -1 ? comments.substring(laneLoc, passLoc).trim() : "";
+                    const PassNumber = passLoc !== -1 ? comments.substring(passLoc, passLoc + 2) : "";
+                    const PassVideo = comments.includes("V") ? "Y" : "N";
+
+                    // Format Route
+                    let Route = String(row["PAVEMENT MANAGEMENT AND TECHNOLOGY"] || "").trim();
+                    const lastChar = Route.slice(-1);
+
+                    if (isNaN(lastChar)) {
+                        const numericPart = Route.slice(0, -1);
+                        Route = numericPart.padStart(3, "0") + lastChar;
+                    } else {
+                        Route = Route.padStart(3, "0");
+                    }
+
+                    // Handle Mileposts being in wrong order
+                    let MPFrom = row["__EMPTY_1"];
+                    let MPTo = row["__EMPTY_2"];
+
+                    if (Number(MPFrom) > Number(MPTo)) {
+                        [MPFrom, MPTo] = [MPTo, MPFrom];
+                    }
+
+                    return {
+                        Route: Route,
+                        Direction: row["__EMPTY"] ? row["__EMPTY"].substring(0, 1) : "",
+                        MPFrom: MPFrom,
+                        MPTo: MPTo,
+                        CrewPosition: row["__EMPTY_3"],
+                        FileName: row["__EMPTY_4"],
+                        Comments: comments,
+                        LaneID: LaneID,
+                        PassNumber: PassNumber,
+                        PassVideo: PassVideo,
+                        Lat: null,
+                        Long: null,
+                    }
+                });
+
+            return { formattedFieldCrew };
+        }
+
+        function markClosestMilepost(rawData) {
+            const gpsMap = new Map();
+
+            rawData
+                .filter(row => Number(row.F1) === 5280)
+                .forEach(row => {
+                    const key = `${row.F6}_${row.F7}`;
+
+                    if (!gpsMap.has(key) || Number(row.F2) < gpsMap.get(key).MPFrom) {
+                        gpsMap.set(key, {
+                            MPFrom: Number(row.F2),
+                            Lat: row.F6,
+                            Long: row.F7,
+                            ClosestMP: false
+                        });
+                    }
+                });
+
+            const tempGPS = [...gpsMap.values()];
+
+            rawData
+                .filter(row => Number(row.F1) === 5406)
+                .forEach(interval => {
+                    const intervalMP = Number(interval.F2);
+                    let closest = null;
+                    let minDist = Infinity;
+
+                    for (const gps of tempGPS) {
+                        const dist = Math.abs(gps.MPFrom - intervalMP);
+                        if (dist < minDist) {
+                            minDist = dist
+                            closest = gps;
+                        }
+                    }
+
+                    if (closest) closest.ClosestMP = true;
+                });
+
+            const nonGPSRows = rawData.filter(
+                row => Number(row.F1) !== 5280
+            );
+
+            const closestGPSRows = tempGPS
+                .filter(row => row.ClosestMP)
+                .map(row => ({
+                    F1: 5280,
+                    F2: Number(row.MPFrom.toFixed(2)),
+                    F6: row.Lat,
+                    F7: row.Long
+                }));
+
+            return [...nonGPSRows, ...closestGPSRows];
+        }
+
+        function wRoundDown(value, digit) {
+            if (String(value).includes(".")) {
+                const expandedValue = Math.abs(value) * (10 ** digit);
+                return Math.sign(value) * Math.trunc(expandedValue) / (10 ** digit);
+            }
+
+            return value;
+        }
+
+        function calcAvgIRI(rawAdjustments) {
+            let n = 0; // count of good tests
+            let i = 0; // sum of IRI value of good test
+            let t = 0; // total lots with low speed
+
+            for (const row of rawAdjustments) {
+                n = 0;
+                i = 0;
+
+                if (row["AvgSpeedPass1"] >= 16) {
+                    n = 1;
+                    i = row["AvgPass1"];
+                }
+
+                if (row["AvgSpeedPass2"] >= 16) {
+                    n += 1;
+                    i += row["AvgPass2"];
+                }
+
+                if (row["AvgSpeedPass3"] >= 16) {
+                    n += 1;
+                    i += row["AvgPass3"];
+                }
+
+                if (n > 0) row["AvgIRI"] = wRoundDown(i / n, 0);
+
+                if (n > 0 && n < 3) {
+                    row["SpeedCorrApplied"] = true;
+                    t += 1;
+                } else if (n === 3) {
+                    row["SpeedCorrApplied"] = false;
+                } else if (n === 0) {
+                    row["AvgIRI"] = 0;
+                    row["SpeedCorrApplied"] = true;
+                }
+            }
+        }
+
+        function populationStdDev(rawAdjustments) {
+            for (const row of rawAdjustments) {
+                const values = [
+                    row.AvgPass1,
+                    row.AvgPass2,
+                    row.AvgPass3
+                ]
+                    .filter(value => value != null && !isNaN(value))
+                    .map(Number);
+
+                if (values.length >= 2) {
+                    const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+
+                    const sumSqDiff = values.reduce((sum, value) => {
+                        return sum + Math.pow(value - mean, 2);
+                    }, 0);
+
+                    const variance = sumSqDiff / values.length;
+
+                    row.StdDev = Number(Math.sqrt(variance).toFixed(1));
+                }
+            }
+        }
+
+        function findOutlierInRecordset(rawAdjustments) {
+            for (const row of rawAdjustments) {
+                if (row.AvgPass1 == null || row.AvgPass2 == null || row.AvgPass3 == null) continue;
+
+                const avg1 = Number(row.AvgPass1);
+                const avg2 = Number(row.AvgPass2);
+                const avg3 = Number(row.AvgPass3);
+
+                const values = [avg1, avg2, avg3].sort((a, b) => a - b);
+                const median = values[1];
+
+                const diff1 = Math.abs(avg1 - median);
+                const diff2 = Math.abs(avg2 - median);
+                const diff3 = Math.abs(avg3 - median);
+
+                let outlierPass;
+
+                if (diff1 > diff2 && diff1 > diff3) {
+                    outlierPass = "1";
+                }
+                else if (diff2 > diff1 && diff2 > diff3) {
+                    outlierPass = "2";
+                }
+                else {
+                    outlierPass = "3";
+                }
+
+                row.OutlierPass = outlierPass;
+            }
+        }
+
+        function MPAdjustmentTableDynatest(rawPayAdjustment) {
+            const mpAdjustments = [];
+            let sectionID = 1;
+
+            rawPayAdjustment.sort((a, b) =>
+                a.Route.localeCompare(b.Route) ||
+                a.Direction.localeCompare(b.Direction) ||
+                a.LaneID.localeCompare(b.LaneID) ||
+                Number(a.MPFrom) - Number(b.MPFrom)
+            );
+
+            let i = 0;
+            while (i < rawPayAdjustment.length) {
+                const first = rawPayAdjustment[i];
+
+                const route = first.Route;
+                const direction = first.Direction;
+                const laneID = first.LaneID;
+
+                let MPStart = Number(first.MPFrom);
+                let MPEnd = Number(first.MPTo);
+
+                // Build contiguous section
+                while (i + 1 < rawPayAdjustment.length) {
+                    const next = rawPayAdjustment[i + 1];
+                    const gap = Number(next.MPFrom) - Number(rawPayAdjustment[i].MPFrom);
+
+                    if (
+                        next.Route === route &&
+                        next.Direction === direction &&
+                        next.LaneID === laneID &&
+                        Number(gap.toFixed(2)) <= 0.5
+                    ) {
+                        MPEnd = Number(next.MPTo);
+                        i++;
+                    }
+                    else {
+                        break;
+                    }
+                }
+
+                let existingSection = mpAdjustments.find(section =>
+                    section.Route === route &&
+                    section.Direction === direction &&
+                    (
+                        (MPStart >= section.MPStart && MPStart < section.MPEnd) ||
+                        (MPEnd <= section.MPEnd && MPEnd > section.MPStart) ||
+                        (MPStart <= section.MPStart && MPEnd >= section.MPEnd)
+                    )
+                );
+
+
+                if (existingSection) {
+                    sectionID = existingSection.SectionID;
+                }
+                else {
+                    if (mpAdjustments.length > 0) {
+                        sectionID =
+                            Math.max(...mpAdjustments.map(x => x.SectionID)) + 1;
+                    }
+                }
+
+                const duplicate = mpAdjustments.find(x =>
+                    x.Route === route &&
+                    x.LaneID === `${direction}-L${laneID}`
+                );
+
+                if (duplicate) throw new Error(`Duplicate LaneID Found - ${direction}-L${laneID} on Route ${route}`);
+
+                const videoRow = rawPayAdjustment.find(row =>
+                    row.Route === route &&
+                    row.Direction === direction &&
+                    row.LaneID === laneID &&
+                    row.PassVideo === "Y" &&
+                    row.MPFrom > MPStart &&
+                    row.MPTo < MPEnd
+                );
+
+                const videoPassNum = videoRow?.PassNumber ?? -1;
+                mpAdjustments.push({
+                    Route: route,
+                    Direction: direction,
+                    LaneID: `${direction}-L${laneID}`,
+                    MPStart,
+                    MPEnd,
+                    MPAdjustment: 0,
+                    SectionID: sectionID,
+                    VideoPassNum: videoPassNum,
+                    AddedOn: new Date()
+                });
+
+                rawPayAdjustment.forEach(row => {
+                    if (
+                        row.Route === route &&
+                        row.Direction === direction &&
+                        row.LaneID === laneID &&
+                        row.MPFrom >= MPStart &&
+                        row.MPTo <= MPEnd
+                    ) {
+                        row.SectionID = sectionID;
+                    }
+                });
+
+                i++;
+            }
+
+            return mpAdjustments;
+        }
+
+        let rawPayAdjustment = [];
+
+        const data = await selectedFieldcrewSheet.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const fieldcrewSheet = workbook.Sheets[workbook.SheetNames[0]];
+        let jsonFieldcrew = XLSX.utils.sheet_to_json(fieldcrewSheet);
+
+        const { formattedFieldCrew } = formatFieldCrewData(jsonFieldcrew);
+        const distinctRoutes = [...new Set(formattedFieldCrew.map(row => row.Route))];
+
+        const processedRawData = new Map();
+        let startLimit = null;
+        let endLimit = null;
+
+        for (const route of distinctRoutes) {
+            let firstPass = true;
+
+            const routeRows = formattedFieldCrew
+                .filter(row => row.Route === route)
+                .sort((a, b) => {
+                    return a.Route.localeCompare(b.Route)
+                        || a.Direction.localeCompare(b.Direction)
+                        || Number(a.MPFrom) - Number(b.MPFrom)
+                });
+
+            for (const row of routeRows) {
+                // Find / Get file
+                let fileName = row.FileName;
+                let excelFile = individualTestFiles.find(
+                    file => file.name.replace(".xlsb", "") === fileName
+                );
+
+                if (!excelFile) {
+                    const correctedFileName = fileName.substring(0, 1) + route + fileName.slice(-2);
+                    excelFile = individualTestFiles.find(
+                        file => file.name.replace(".xlsb", "") === correctedFileName
+                    );
+
+                    if (excelFile) {
+                        fileName = correctedFileName;
+                        row.FileName = correctedFileName;
+                    }
+                }
+
+                if (!excelFile) {
+                    alert(`Could not find test file: ${fileName}`);
+                    continue;
+                }
+
+                // Convert to json
+                const data = await excelFile.arrayBuffer();
+                const workbook = XLSX.read(data);
+                const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rawData = XLSX.utils.sheet_to_json(worksheet, {
+                    header: ["F1", "F2", "F3", "F4", "F5", "F6", "F7"],
+                    defval: null
+                });
+
+                // Find closest milepost and filter data
+                let filteredRawData = rawData.filter(row => ["5280", "5403", "5406"].includes(String(row.F1)));
+                filteredRawData = markClosestMilepost(filteredRawData);
+                filteredRawData.forEach(row => {
+                    row.F2 = row.F2 != null ? Number(Number(row.F2).toFixed(2)) : row.F2;
+                    row.F3 = row.F3 != null ? Number(Number(row.F3).toFixed(2)) : row.F3;
+                });
+
+                filteredRawData = filteredRawData.filter(row => Number(row.F1) === 5280 || Number(row.F2) !== Number(row.F3));
+                filteredRawData.forEach(row => {
+                    if (Number(row.F1) !== 5280 && Number(row.F2) > Number(row.F3)) {
+                        [row.F2, row.F3] = [row.F3, row.F2];
+                    }
+                });
+
+                // Set start / end limits
+                const limitRows = filteredRawData.filter(row => Number(row.F1) === 5403);
+                const currentStart = Math.min(...limitRows.map(row => Number(row.F2)));
+                const currentEnd = Math.max(...limitRows.map(row => Number(row.F2)));
+
+                if (firstPass) {
+                    startLimit = currentStart;
+                    endLimit = currentEnd;
+                    firstPass = false;
+                } else {
+                    startLimit = Math.min(startLimit, currentStart);
+                    endLimit = Math.max(endLimit, currentEnd);
+                }
+
+                processedRawData.set(fileName, {
+                    Data: filteredRawData,
+                    Route: route,
+                    Direction: row.Direction,
+                    LaneID: row.LaneID,
+                    PassNumber: Number(row.PassNumber.replace("P", "")),
+                    PassVideo: row.PassVideo
+                });
+            }
+
+            const routeLanes = [
+                ...new Map(
+                    formattedFieldCrew
+                        .filter(row => row.Route === route)
+                        .map(row => [
+                            `${row.Direction}_${row.LaneID}`,
+                            {
+                                Direction: row.Direction,
+                                LaneID: row.LaneID
+                            }
+                        ])
+                ).values()
+            ];
+
+            for (const lane of routeLanes) {
+                for (let t = startLimit; t < endLimit; t += 0.01) {
+                    rawPayAdjustment.push({
+                        Route: route,
+                        Direction: lane.Direction,
+                        LaneID: lane.LaneID,
+                        MPFrom: Number(t.toFixed(2)),
+                        MPTo: Number((t + 0.01).toFixed(2))
+                    });
+                }
+            }
+
+            for (const importedFile of processedRawData.values()) {
+                const {
+                    Data,
+                    Route,
+                    Direction,
+                    LaneID,
+                    PassNumber
+                } = importedFile;
+
+                for (const row of Data) {
+                    const adjustmentRow = rawPayAdjustment.find(adjustment =>
+                        adjustment.Route === Route &&
+                        adjustment.Direction === Direction &&
+                        adjustment.LaneID === LaneID &&
+                        Number(adjustment.MPFrom) === Number(row.F2)
+                    );
+
+                    if (!adjustmentRow) continue;
+
+                    adjustmentRow.PassVideo = importedFile.PassVideo;
+                    adjustmentRow.PassNumber = importedFile.PassNumber;
+
+                    // Avg Speed
+                    if (Number(row.F1) === 5403) adjustmentRow[`AvgSpeedPass${PassNumber}`] = row.F4;
+
+                    // Left / Right / Avg IRI
+                    if (Number(row.F1) === 5406) {
+                        adjustmentRow[`LeftPass${PassNumber}`] = row.F6;
+                        adjustmentRow[`RightPass${PassNumber}`] = row.F4;
+                        adjustmentRow[`AvgPass${PassNumber}`] = (Number(row.F4) + Number(row.F6)) / 2;
+                    }
+
+                    if (Number(row.F1) === 5280) {
+                        adjustmentRow[`LatPass${PassNumber}`] = row.F6;
+                        adjustmentRow[`LonPass${PassNumber}`] = row.F7;
+                    }
+                }
+            }
+        }
+
+        // Remove rows where avg speed passes = 0
+        rawPayAdjustment = rawPayAdjustment.filter(row =>
+            !(
+                Number(row.AvgSpeedPass1) === 0 &&
+                Number(row.AvgSpeedPass2) === 0 &&
+                Number(row.AvgSpeedPass3) === 0
+            ) &&
+            !(
+                row.AvgSpeedPass1 == null &&
+                row.AvgSpeedPass2 == null &&
+                row.AvgSpeedPass3 == null
+            )
+        );
+
+        rawPayAdjustment.forEach(row => {
+            row.Direction = row.Direction.toUpperCase();
+        });
+
+        calcAvgIRI(rawPayAdjustment);
+        populationStdDev(rawPayAdjustment);
+        findOutlierInRecordset(rawPayAdjustment);
+
+        const mpAdjustments = MPAdjustmentTableDynatest(rawPayAdjustment);
+
+        alert("Raw Data Imported Successfully");
+
+        setRawPayAdjustments(rawPayAdjustment);
+        setMPAdjustments(mpAdjustments);
+    };
+
+    const handleImport = async (e) => {
+        if (importType === "Dynatest" && (!selectedFieldcrewSheet || individualTestFiles.length == 0)) {
+            alert("Please select both Fieldcrew Worksheet and Individual Test Files."); // Shouldn't ever happen since import is disabled without
+            return;
+        } else if (importType === "Pathway" && !selectedFieldcrewSheet) {
+            alert("Please select a Fieldcrew Wokrsheet."); // Shouldn't ever happen since import is disabled without
+            return;
+        }
+
+        if (importType === "Dynatest") {
+            await importDynatest();
+        } else {
+            alert("Don't have Pathway yet.")
+            return;
+        }
+
+        setRawPayAdjustments(prev =>
+            prev.map(row => {
+                if (row.AvgSpeedPass1 != null && Number(row.AvgSpeedPass1) < 16) {
+                    row.LeftPass1 = null;
+                    row.RightPass1 = null;
+                    row.AvgPass1 = null;
+                }
+
+                if (row.AvgSpeedPass2 != null && Number(row.AvgSpeedPass2) < 16) {
+                    row.LeftPass2 = null;
+                    row.RightPass2 = null;
+                    row.AvgPass2 = null;
+                }
+
+                if (row.AvgSpeedPass3 != null && Number(row.AvgSpeedPass3) < 16) {
+                    row.LeftPass3 = null;
+                    row.RightPass3 = null;
+                    row.AvgPass3 = null;
+                }
+
+                return row;
+            })
+        );
+
+        console.log(rawPayAdjustments);
+        console.log(MPAdjustments);
+    };
+
     return (
-        <div>
-            RQ Checker
+        <div className="p-4 space-y-4">
+            <div className="flex items-center gap-3">
+                <label className="text-sm font-bold text-black w-24">
+                    Test Vehicle:
+                </label>
+
+                <select
+                    value={importType}
+                    onChange={(e) => {
+                        setImportType(e.target.value);
+                        setFieldcrewSheet("");
+                        setSelectedFieldcrewSheet(null);
+                        setIndividualTestsText("");
+                        setIndividualTestFiles([]);
+                    }}
+                    className="w-32 h-8 border border-gray-500 rounded px-2 bg-white text-sm text-black"
+                >
+                    <option value="">Select a vehicle</option>
+                    <option value="Pathway">Pathway</option>
+                    <option value="Dynatest">Dynatest</option>
+                </select>
+            </div>
+
+            {/* Fieldcrew Sheet */}
+            <div className="flex items-center gap-3">
+                <label className="text-sm font-bold text-black w-16">
+                    File:
+                </label>
+
+                <div className="flex items-center gap-2 flex-1">
+                    <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
+                        {fieldcrewSheet || "No files selected"}
+                    </span>
+
+                    <button
+                        type="button"
+                        onClick={() => fieldcrewRef.current.click()}
+                        className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                    >
+                        Browse
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleImport}
+                        className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                        disabled={
+                            (importType === "Dynatest" && (!selectedFieldcrewSheet || individualTestFiles.length === 0)) ||
+                            (importType === "Pathway" && !selectedFieldcrewSheet)
+                        }
+                    >
+                        Import
+                    </button>
+
+                    <input
+                        ref={fieldcrewRef}
+                        type="file"
+                        accept=".xlsx,.xls"
+                        onChange={handleSheetChange}
+                        className="hidden"
+                    />
+                </div>
+            </div>
+
+            {/* Individual Test Files */}
+            {importType === "Dynatest" &&
+                <div className="flex items-center gap-3">
+                    <label className="text-sm font-bold text-black w-16">
+                        Tests:
+                    </label>
+
+                    <div className="flex items-center gap-2 flex-1">
+                        <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
+                            {individualTestsText || "No files selected"}
+                        </span>
+
+                        <button
+                            type="button"
+                            onClick={() => individualTestsRef.current.click()}
+                            className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                        >
+                            Browse
+                        </button>
+
+                        <input
+                            ref={individualTestsRef}
+                            type="file"
+                            accept=".xlsx,.xls,.xlsb"
+                            multiple
+                            onChange={handleIndividualTestsChange}
+                            className="hidden"
+                        />
+                    </div>
+                </div>
+            }
         </div>
     );
 }

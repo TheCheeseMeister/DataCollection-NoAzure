@@ -92,7 +92,7 @@ function ReportsForm() {
     // Review Actions filtered for data year
     const filteredReviewActions = Object.values(
         (reportsData?.reviewActions ?? [])
-            .filter((item) => Number(item?.DataYear) === 2025)
+            .filter((item) => Number(item?.DataYear) === selectedYear)
             .reduce((acc, item) => {
 
                 const reason = item?.ReasonName;
@@ -438,7 +438,7 @@ function ReportsForm() {
                                     <LabelList dataKey="Accept" position="center" fill="#ffffff" />
                                 </Bar>
                                 <Bar dataKey="Reject" stackId="Action" fill="#e44040">
-                                    <LabelList dataKey="Accept" position="center" fill="#ffffff" />
+                                    <LabelList dataKey="Reject" position="center" fill="#ffffff" />
                                 </Bar>
                             </BarChart>
                         </ResponsiveContainer>

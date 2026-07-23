@@ -1701,6 +1701,380 @@ function RideQualityChecker() {
         setMPAdjustments(mpAdjustments);
     };
 
+    const importPathway = async () => {
+        const createMPAdjustmentTable = (rawPayAdjustment) => {
+
+            // Equivalent to:
+            // SELECT Route, LaneID, Direction, MPFrom, MPTo
+            // FROM tblRawPayAdjustment
+            // ORDER BY Route, Direction, LaneID, MPFrom
+
+            const sortedData = [...rawPayAdjustment].sort((a, b) => {
+                const routeCompare =
+                    String(a.Route).localeCompare(String(b.Route));
+
+                if (routeCompare !== 0) {
+                    return routeCompare;
+                }
+
+                const directionCompare =
+                    String(a.Direction).localeCompare(String(b.Direction));
+
+                if (directionCompare !== 0) {
+                    return directionCompare;
+                }
+
+                const laneCompare =
+                    String(a.LaneID).localeCompare(String(b.LaneID));
+
+                if (laneCompare !== 0) {
+                    return laneCompare;
+                }
+
+                return Number(a.MPFrom) - Number(b.MPFrom);
+            });
+
+
+            const mpAdjustments = [];
+
+            let sectionID = 1;
+
+            let i = 0;
+
+            while (i < sortedData.length) {
+
+                const firstRow = sortedData[i];
+
+                const Rte = firstRow.Route;
+                const Dir = firstRow.Direction;
+                const LaneID = firstRow.LaneID;
+
+                const MPStart = Number(firstRow.MPFrom);
+
+                let MPEnd = Number(firstRow.MPTo);
+
+
+                // Look ahead to find adjacent sections
+                let j = i + 1;
+
+                while (j < sortedData.length) {
+
+                    const currentRow = sortedData[j];
+                    const previousRow = sortedData[j - 1];
+
+                    const MP1 =
+                        Math.round(Number(previousRow.MPFrom) * 100) / 100;
+
+                    const MP2 =
+                        Math.round(Number(currentRow.MPFrom) * 100) / 100;
+
+
+                    const sameGroup =
+                        currentRow.Route === Rte &&
+                        currentRow.Direction === Dir &&
+                        currentRow.LaneID === LaneID;
+
+
+                    const closeEnough =
+                        Math.round((MP2 - MP1) * 100) / 100 <= 0.5;
+
+
+                    if (sameGroup && closeEnough) {
+
+                        // Extend section
+                        MPEnd = Number(currentRow.MPTo);
+
+                        j++;
+
+                    } else {
+
+                        break;
+                    }
+                }
+
+
+                // Find an existing section that overlaps
+                // the current mileage range
+                const existingSection = mpAdjustments.find(section => {
+
+                    if (section.Rte !== Rte) {
+                        return false;
+                    }
+
+                    // Access checks:
+                    //
+                    // (MPStart >= section.MPStart AND MPStart < section.MPEnd)
+                    // OR
+                    // (MPEnd <= section.MPEnd AND MPEnd > section.MPStart)
+                    // OR
+                    // (MPStart <= section.MPStart AND MPEnd >= section.MPEnd)
+
+                    const overlaps =
+                        (
+                            MPStart >= section.MPStart &&
+                            MPStart < section.MPEnd
+                        ) ||
+                        (
+                            MPEnd <= section.MPEnd &&
+                            MPEnd > section.MPStart
+                        ) ||
+                        (
+                            MPStart <= section.MPStart &&
+                            MPEnd >= section.MPEnd
+                        );
+
+                    // Access also checks:
+                    // Left(LaneID, 1) = Direction
+                    //
+                    // But the inserted LaneID is:
+                    // Dir & "-L" & LaneID
+
+                    const sameDirection =
+                        String(section.LaneID).startsWith(`${Dir}-`);
+
+                    return overlaps && sameDirection;
+                });
+
+
+                if (existingSection) {
+
+                    // Reuse existing SectionID
+                    sectionID = existingSection.SectionID;
+
+                } else {
+
+                    // Find highest existing SectionID
+                    const maxSectionID =
+                        mpAdjustments.length > 0
+                            ? Math.max(
+                                ...mpAdjustments.map(x => x.SectionID)
+                            )
+                            : 0;
+
+                    sectionID = maxSectionID + 1;
+                }
+
+
+                // Create tblMPAdjustments record
+                const newSection = {
+                    Route: Rte,
+                    Direction: Dir,
+                    LaneID: `${Dir}-L${LaneID}`,
+                    MPStart,
+                    MPEnd,
+                    SectionID: sectionID
+                };
+
+                mpAdjustments.push(newSection);
+
+
+                // Equivalent to:
+                //
+                // UPDATE tblRawPayAdjustment
+                // SET SectionID = sectionID
+                // WHERE Route = Rte
+                // AND Direction = Dir
+                // AND LaneID = LaneID
+                // AND MPFrom >= MPStart
+                // AND MPTo <= MPEnd
+
+                rawPayAdjustment.forEach(row => {
+                    if (
+                        row.Route === Rte &&
+                        row.Direction === Dir &&
+                        row.LaneID === LaneID &&
+                        Number(row.MPFrom) >= MPStart &&
+                        Number(row.MPTo) <= MPEnd
+                    ) {
+                        row.SectionID = sectionID;
+                    }
+                });
+
+
+                // Move to next unprocessed section
+                i = j;
+            }
+
+
+            return {
+                rawPayAdjustment,
+                mpAdjustments
+            };
+        };
+
+        const calcAvgIRIPathway = (rawPayAdjustment) => {
+            return rawPayAdjustment.map(row => {
+                let n = 0; // Number of good tests
+                let i = 0; // Sum of IRI values
+
+                // Pass 1
+                if (Number(row.AvgSpeedPass1) >= 16) {
+                    n++;
+                    i += Number(row.AvgPass1) || 0;
+                }
+
+                // Pass 2
+                if (Number(row.AvgSpeedPass2) >= 16) {
+                    n++;
+                    i += Number(row.AvgPass2) || 0;
+                }
+
+                // Pass 3
+                if (Number(row.AvgSpeedPass3) >= 16) {
+                    n++;
+                    i += Number(row.AvgPass3) || 0;
+                }
+
+                let AvgIRI;
+                let SpeedCorrApplied;
+
+                if (n > 0) {
+                    AvgIRI = Math.floor(i / n);
+                }
+
+                if (n > 0 && n < 3) {
+                    SpeedCorrApplied = true;
+                } else if (n === 3) {
+                    SpeedCorrApplied = false;
+                } else if (n === 0) {
+                    AvgIRI = 0;
+                    SpeedCorrApplied = true;
+                }
+
+                return {
+                    ...row,
+                    AvgIRI,
+                    SpeedCorrApplied
+                };
+            });
+        };
+
+        const createRawPayAdjustment = (data) => {
+            const grouped = new Map();
+
+            data.forEach(row => {
+                if (row.Route == null || row.Route === "") {
+                    return;
+                }
+
+                const key = [
+                    row.Route,
+                    row.Direction,
+                    row.MPFrom,
+                    row.MPTo,
+                    row.LaneID
+                ].join("|");
+
+                if (!grouped.has(key)) {
+                    grouped.set(key, {
+                        ...row,
+
+                        LeftPass1: null,
+                        RightPass1: null,
+                        AvgPass1: null,
+                        AvgSpeedPass1: null,
+
+                        LeftPass2: null,
+                        RightPass2: null,
+                        AvgPass2: null,
+                        AvgSpeedPass2: null,
+
+                        LeftPass3: null,
+                        RightPass3: null,
+                        AvgPass3: null,
+                        AvgSpeedPass3: null
+                    });
+                }
+
+                const adjustment = grouped.get(key);
+                const pass = String(row.Pass ?? "").slice(-1);
+
+                if (!["1", "2", "3"].includes(pass)) return;
+
+                adjustment[`LeftPass${pass}`] = row.IRILWP;
+                adjustment[`RightPass${pass}`] = row.IRIRWP;
+                adjustment[`AvgPass${pass}`] = row.IRIAVG;
+                adjustment[`AvgSpeedPass${pass}`] = row.VANSpeed;
+
+                if ("StartLat" in row) {
+                    adjustment[`LatPass${pass}`] = row.StartLat;
+                    adjustment[`LonPass${pass}`] = row.StartLong;
+                }
+            });
+
+            return Array.from(grouped.values());
+        };
+
+        function formatPathwayData(data) {
+            data = data.map(row => ({
+                ...row,
+                LaneID: row.LaneID != null ? String(row.LaneID) : null
+            }));
+
+            const hasRoute = data.some(row => row.Route !== null && row.Route !== undefined && row.Route !== "");
+
+            if (!hasRoute) throw new Error("Pathway template is missing Route.");
+
+            const finalData = data
+                .map(row => {
+                    let route = String(row.Route).trim();
+                    route = route.padStart(3, "0")
+
+                    const lastChar = route.slice(-1);
+                    if (isNaN(Number(lastChar))) {
+                        const routeNumber = route.slice(0, -1);
+                        const routeLetter = lastChar.toUpperCase();
+                        route = routeNumber.padStart(3, "0") + routeLetter;
+                    }
+
+                    let MPFrom = Number(row.MPFrom);
+                    let MPTo = Number(row.MPTo);
+
+                    if (MPFrom > MPTo) {
+                        [MPFrom, MPTo] = [MPTo, MPFrom];
+                    }
+
+                    MPFrom = Math.round((MPFrom + Number.EPSILON) * 100) / 100;
+                    MPTo = Math.round((MPTo + Number.EPSILON) * 100) / 100;
+
+                    return {
+                        ...row,
+                        Route: route,
+                        Direction: String(row.Direction ?? "").trim(),
+                        MPFrom,
+                        MPTo,
+                        LaneID: String(row.LaneID ?? "")
+                    }
+                });
+
+            return finalData;
+        }
+
+        let rawPayAdjustment = [];
+
+        const data = await selectedFieldcrewSheet.arrayBuffer();
+        const workbook = XLSX.read(data);
+        const fieldcrewSheet = workbook.Sheets[workbook.SheetNames[0]];
+        let jsonFieldcrew = XLSX.utils.sheet_to_json(fieldcrewSheet);
+
+        const formattedFieldCrew = formatPathwayData(jsonFieldcrew);
+        rawPayAdjustment = createRawPayAdjustment(formattedFieldCrew);
+        rawPayAdjustment = calcAvgIRIPathway(rawPayAdjustment);
+
+        const {
+            rawPayAdjustment: finalRawPayAdjustment,
+            mpAdjustments
+        } = createMPAdjustmentTable(rawPayAdjustment);
+
+        alert("Raw Data Imported Successfully");
+        
+        setDynatestWorksheet(formattedFieldCrew);
+        setRawPayAdjustments(rawPayAdjustment);
+        setMPAdjustments(mpAdjustments);
+
+        console.log(mpAdjustments);
+    };
+
     const handleImport = async (e) => {
         if (importType === "Dynatest" && (!selectedFieldcrewSheet || individualTestFiles.length == 0)) {
             alert("Please select both Fieldcrew Worksheet and Individual Test Files."); // Shouldn't ever happen since import is disabled without
@@ -1713,8 +2087,7 @@ function RideQualityChecker() {
         if (importType === "Dynatest") {
             await importDynatest();
         } else {
-            alert("Don't have Pathway yet.")
-            return;
+            await importPathway();
         }
 
         setRawPayAdjustments(prev =>
@@ -2681,9 +3054,10 @@ function RideQualityChecker() {
 
                         <div className="flex items-center gap-2 flex-1">
                             <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
-                                {fieldcrewSheet || "No files selected"}
+                                <span className="truncate pr-2">
+                                    {fieldcrewSheet || "No files selected"}
+                                </span>
                             </span>
-
                             <button
                                 type="button"
                                 onClick={() => fieldcrewRef.current.click()}
@@ -2700,7 +3074,8 @@ function RideQualityChecker() {
                                     (importType === "Dynatest" &&
                                         (!selectedFieldcrewSheet ||
                                             individualTestFiles.length === 0)) ||
-                                    (importType === "Pathway" && !selectedFieldcrewSheet)
+                                    (importType === "Pathway" && !selectedFieldcrewSheet) ||
+                                    (importType === "")
                                 }
                             >
                                 Import

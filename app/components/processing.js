@@ -6,6 +6,18 @@ import { getDirections, getGPSData, getSectionData, getAllGPSData } from '../uti
 import * as XLSX from "xlsx";
 import { AgGridReact, agGridReact } from 'ag-grid-react';
 
+import {
+    LineChart,
+    Line,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Legend,
+    ResponsiveContainer,
+    Brush,
+} from "recharts";
+
 export default function processing() {
     const tabs = [
         { id: "tenthMile", label: "Tenth Mile Processor & QA" },
@@ -1106,8 +1118,54 @@ function RideQualityChecker() {
     const [individualTestsText, setIndividualTestsText] = useState("");
     const [individualTestFiles, setIndividualTestFiles] = useState([]);
 
+    const [dynatestWorksheet, setDynatestWorksheet] = useState([]);
     const [rawPayAdjustments, setRawPayAdjustments] = useState([]);
     const [MPAdjustments, setMPAdjustments] = useState([]);
+
+    const [selectedSection, setSelectedSection] = useState(null);
+    const [warning1, setWarning1] = useState(false);
+    const [warning2, setWarning2] = useState(false);
+    const [warning3, setWarning3] = useState(false);
+
+    const [chartData, setChartData] = useState([]);
+
+    const [passes, setPasses] = useState({
+        pass1Miles: 0,
+        pass2Miles: 0,
+        pass3Miles: 0,
+
+        averageStdDev: 0,
+        pass1AvgIRI: 0,
+        pass2AvgIRI: 0,
+        pass3AvgIRI: 0,
+
+        pass12Correlation: 0,
+        pass13Correlation: 0,
+        pass23Correlation: 0,
+        averageCorrelation: 0,
+
+        pass1Adjusted: 0,
+        pass2Adjusted: 0,
+        pass3Adjusted: 0,
+
+        mpStart: 0,
+        mpEnd: 0
+    });
+
+    const [viewPasses, setViewPasses] = useState({
+        pass1: true,
+        pass2: true,
+        pass3: true,
+        pass4: false,
+    });
+
+    const [gpsValues, setGPSValues] = useState({
+        p1: "",
+        p2: "",
+        p3: "",
+    });
+
+    const [brushKey, setBrushKey] = useState(0);
 
     const handleSheetChange = (e) => {
         const file = e.target.files[0];
@@ -1423,6 +1481,9 @@ function RideQualityChecker() {
                     MPStart,
                     MPEnd,
                     MPAdjustment: 0,
+                    Pass1Adjustment: 0,
+                    Pass2Adjustment: 0,
+                    Pass3Adjustment: 0,
                     SectionID: sectionID,
                     VideoPassNum: videoPassNum,
                     AddedOn: new Date()
@@ -1635,6 +1696,7 @@ function RideQualityChecker() {
 
         alert("Raw Data Imported Successfully");
 
+        setDynatestWorksheet(formattedFieldCrew);
         setRawPayAdjustments(rawPayAdjustment);
         setMPAdjustments(mpAdjustments);
     };
@@ -1678,107 +1740,1673 @@ function RideQualityChecker() {
                 return row;
             })
         );
-
-        console.log(rawPayAdjustments);
-        console.log(MPAdjustments);
     };
 
+    function calcRowStdDev(pass1, pass2, pass3) {
+        const values = [pass1, pass2, pass3];
+        const validValues = values.filter((value) => value !== 0);
+
+        if (validValues.length === 0) {
+            return 0;
+        }
+
+        const mean = validValues.reduce((sum, value) => sum + value, 0) / validValues.length;
+
+        const variance =
+            validValues.reduce(
+                (sum, value) => sum + Math.pow(value - mean, 2),
+                0
+            ) / validValues.length;
+
+        return Math.sqrt(variance);
+    }
+
+    function calcAverageStdDev(newArr) {
+        if (newArr.length === 0) return;
+
+        let pass1 = 0;
+        let pass2 = 0;
+        let pass3 = 0;
+        let totalStdDev = 0;
+
+        for (const row of newArr) {
+            pass1 = row.AvgPass1 ?? 0
+            pass2 = row.AvgPass2 ?? 0
+            pass3 = row.AvgPass3 ?? 0
+
+            totalStdDev += calcRowStdDev(pass1, pass2, pass3);
+        }
+
+        const avgStdDev = Number((totalStdDev / newArr.length).toFixed(2));
+        setPasses((prev) => ({
+            ...prev,
+            averageStdDev: avgStdDev
+        }));
+
+        if (avgStdDev >= 10) {
+            setWarning2(true);
+        } else {
+            setWarning2(false);
+        }
+    }
+
+    function calcCorrelation(newArr) {
+        const correlationArr = newArr.filter(
+            row => row.SpeedCorrApplied === false
+        );
+
+        const correlations = [];
+
+        for (let i = 1; i <= 3; i++) {
+            let fieldX;
+            let fieldY;
+
+            if (i === 1) {
+                // Pass 1 vs Pass 2
+                fieldX = "AvgPass1";
+                fieldY = "AvgPass2";
+            } else if (i === 2) {
+                // Pass 1 vs Pass 3
+                fieldX = "AvgPass1";
+                fieldY = "AvgPass3";
+            } else {
+                // Pass 2 vs Pass 3
+                fieldX = "AvgPass2";
+                fieldY = "AvgPass3";
+            }
+
+            const validPairs = correlationArr
+                .filter((row) =>
+                    row[fieldX] !== null &&
+                    row[fieldX] !== undefined &&
+                    row[fieldY] !== null &&
+                    row[fieldY] !== undefined &&
+                    row[fieldX] !== 0 &&
+                    row[fieldY] !== 0
+                )
+                .map((row) => ({
+                    x: Number(row[fieldX]),
+                    y: Number(row[fieldY])
+                }));
+
+            const n = validPairs.length;
+            let correlation = 0;
+
+            if (n > 1) {
+                const sumX = validPairs.reduce(
+                    (sum, pair) => sum + pair.x,
+                    0
+                );
+
+                const sumY = validPairs.reduce(
+                    (sum, pair) => sum + pair.y,
+                    0
+                );
+
+                const sumXY = validPairs.reduce(
+                    (sum, pair) => sum + pair.x * pair.y,
+                    0
+                );
+
+                const sumX2 = validPairs.reduce(
+                    (sum, pair) => sum + pair.x ** 2,
+                    0
+                );
+
+                const sumY2 = validPairs.reduce(
+                    (sum, pair) => sum + pair.y ** 2,
+                    0
+                );
+
+                const numerator = n * sumXY - sumX * sumY;
+                const denominator = Math.sqrt(n * sumX2 - sumX ** 2) * Math.sqrt(n * sumY2 - sumY ** 2);
+
+                if (denominator !== 0) correlation = Math.round((numerator / denominator) * 100) / 100;
+            }
+
+            correlations.push(correlation);
+        }
+
+        const averageCorrelation = Math.round((correlations[0] + correlations[1] + correlations[2]) / 3 * 100) / 100;
+
+        setPasses((prev) => ({
+            ...prev,
+            pass12Correlation: correlations[0],
+            pass13Correlation: correlations[1],
+            pass23Correlation: correlations[2],
+            averageCorrelation: averageCorrelation
+        }));
+
+        const hasPoorCorrelation = correlations[0] < 0.75 || correlations[1] < 0.75 || correlations[2] < 0.75;
+        setWarning3(hasPoorCorrelation);
+    }
+
+    function calcAvgIRI(newArr) {
+        if (newArr.length === 0) {
+            setPasses((prev) => ({
+                ...prev,
+                pass1AvgIRI: 0,
+                pass2AvgIRI: 0,
+                pass3AvgIRI: 0
+            }));
+
+            return;
+        }
+
+        const validRows = newArr.filter((row) =>
+            row.AvgPass1 !== null &&
+            row.AvgPass1 !== undefined &&
+            row.AvgPass2 !== null &&
+            row.AvgPass2 !== undefined &&
+            row.AvgPass3 !== null &&
+            row.AvgPass3 !== undefined
+        );
+
+        if (validRows.length === 0) {
+            setPasses((prev) => ({
+                ...prev,
+                pass1AvgIRI: 0,
+                pass2AvgIRI: 0,
+                pass3AvgIRI: 0
+            }));
+
+            return;
+        }
+
+        const pass1AvgIRI =
+            Math.round(
+                (
+                    validRows.reduce(
+                        (sum, row) => sum + Number(row.AvgPass1),
+                        0
+                    ) / validRows.length
+                ) * 10
+            ) / 10;
+
+        const pass2AvgIRI =
+            Math.round(
+                (
+                    validRows.reduce(
+                        (sum, row) => sum + Number(row.AvgPass2),
+                        0
+                    ) / validRows.length
+                ) * 10
+            ) / 10;
+
+        const pass3AvgIRI =
+            Math.round(
+                (
+                    validRows.reduce(
+                        (sum, row) => sum + Number(row.AvgPass3),
+                        0
+                    ) / validRows.length
+                ) * 10
+            ) / 10;
+
+        setPasses((prev) => ({
+            ...prev,
+            pass1AvgIRI,
+            pass2AvgIRI,
+            pass3AvgIRI
+        }));
+    }
+
+    function getDistance(newLat, oldLat, newLon, oldLon) {
+        const toRadians = degrees => degrees * (Math.PI / 180);
+
+        let cosValue =
+            Math.cos(toRadians(90 - newLat)) *
+            Math.cos(toRadians(90 - oldLat)) +
+            Math.sin(toRadians(90 - newLat)) *
+            Math.sin(toRadians(90 - oldLat)) *
+            Math.cos(toRadians(newLon - oldLon));
+
+        // Keep value within valid range for Math.acos()
+        cosValue = Math.min(1, Math.max(-1, cosValue));
+
+        // Distance in meters
+        return Number((Math.acos(cosValue) * 6371000).toFixed(2));
+    }
+
+    function createChartData(newArr, section) {
+        const filteredArr = newArr
+            .sort((a, b) => Number(a.MPFrom) - Number(b.MPFrom));
+
+        setChartData(filteredArr);
+
+        const baseRow = filteredArr.find(
+            row =>
+                row.LatPass1 != null &&
+                row.LatPass2 != null &&
+                row.LatPass3 != null
+        );
+
+        if (!baseRow) return;
+
+        const basePass = Number(section.VideoPassNum || 1);
+        const basePassLat = Number(baseRow[`LatPass${basePass}`]);
+        const basePassLon = Number(baseRow[`LonPass${basePass}`]);
+
+        const p1GPS =
+            baseRow.LatPass1 != null && baseRow.LonPass1 != null
+                ? Number(
+                    (
+                        0.00062137 *
+                        getDistance(
+                            basePassLat,
+                            Number(baseRow.LatPass1),
+                            basePassLon,
+                            Number(baseRow.LonPass1)
+                        )
+                    ).toFixed(2)
+                )
+                : "";
+
+        const p2GPS =
+            baseRow.LatPass2 != null && baseRow.LonPass2 != null
+                ? Number(
+                    (
+                        0.00062137 *
+                        getDistance(
+                            basePassLat,
+                            Number(baseRow.LatPass2),
+                            basePassLon,
+                            Number(baseRow.LonPass2)
+                        )
+                    ).toFixed(2)
+                )
+                : "";
+
+        const p3GPS =
+            baseRow.LatPass3 != null && baseRow.LonPass3 != null
+                ? Number(
+                    (
+                        0.00062137 *
+                        getDistance(
+                            basePassLat,
+                            Number(baseRow.LatPass3),
+                            basePassLon,
+                            Number(baseRow.LonPass3)
+                        )
+                    ).toFixed(2)
+                )
+                : "";
+
+        setGPSValues({
+            p1: p1GPS,
+            p2: p2GPS,
+            p3: p3GPS,
+        });
+    }
+
+    const handleSectionChange = async (section) => {
+        function calcPassMilesCollected(newArr) {
+            const pass1Miles = newArr
+                .filter(row => row.AvgPass1 != null)
+                .reduce(
+                    (sum, row) =>
+                        sum + (Number(row.MPTo) - Number(row.MPFrom)),
+                    0
+                );
+
+            const pass2Miles = newArr
+                .filter(row => row.AvgPass2 != null)
+                .reduce(
+                    (sum, row) =>
+                        sum + (Number(row.MPTo) - Number(row.MPFrom)),
+                    0
+                );
+
+            const pass3Miles = newArr
+                .filter(row => row.AvgPass3 != null)
+                .reduce(
+                    (sum, row) =>
+                        sum + (Number(row.MPTo) - Number(row.MPFrom)),
+                    0
+                );
+
+            const roundedPass1Miles = Math.round(pass1Miles * 100) / 100;
+            const roundedPass2Miles = Math.round(pass2Miles * 100) / 100;
+            const roundedPass3Miles = Math.round(pass3Miles * 100) / 100;
+
+            setPasses((prev) => ({
+                ...prev,
+                pass1Miles: roundedPass1Miles,
+                pass2Miles: roundedPass2Miles,
+                pass3Miles: roundedPass3Miles
+            }));
+
+            const mileageWarning = Math.abs(roundedPass1Miles - roundedPass2Miles) >= 0.2 || Math.abs(roundedPass1Miles - roundedPass3Miles) >= 0.2 || Math.abs(roundedPass2Miles - roundedPass3Miles) >= 0.2;
+            setWarning1(mileageWarning);
+        }
+
+        setSelectedSection(section);
+
+        // Reset
+        setGPSValues({
+            p1: "",
+            p2: "",
+            p3: ""
+        });
+
+        setPasses((prev) => ({
+            ...prev,
+            pass1Adjusted: 0,
+            pass2Adjusted: 0,
+            pass3Adjusted: 0,
+        }));
+
+        const newArr = await rawPayAdjustments.filter((row) => (
+            row.Route === section.Route &&
+            row.Direction === section.Direction &&
+            row.LaneID === section.LaneID.slice(3) &&
+            row.SectionID === section.SectionID
+        ));
+
+        calcAverageStdDev(newArr);
+        calcCorrelation(newArr);
+        calcAvgIRI(newArr);
+        calcPassMilesCollected(newArr);
+
+        const mpRows = rawPayAdjustments.filter((row) => (
+            row.Route === section.Route &&
+            row.Direction === section.Direction &&
+            row.LaneID === section.LaneID.slice(3) &&
+            row.SectionID === section.SectionID &&
+            row.AvgPass1 != null &&
+            row.AvgPass2 != null &&
+            row.AvgPass3 != null
+        ));
+
+        const mpStart = mpRows.length > 0
+            ? Math.min(...mpRows.map(row => Number(row.MPFrom)))
+            : 0;
+
+        const mpEnd = mpRows.length > 0
+            ? Math.max(...mpRows.map(row => Number(row.MPTo)))
+            : 0;
+
+        setPasses((prev) => ({
+            ...prev,
+            mpStart,
+            mpEnd
+        }));
+
+        createChartData(newArr, section);
+        setBrushKey(prev => prev + 1);
+    };
+
+    const createNewMileposts = (data, mpAdjustValue) => {
+        if (!data.length) return data;
+
+        const sortedData = [...data].sort(
+            (a, b) => Number(a.MPFrom) - Number(b.MPFrom)
+        );
+
+        const minMP = Number(sortedData[0].MPFrom);
+        const maxMP = Number(sortedData[sortedData.length - 1].MPFrom);
+
+        const newRows = [];
+
+        if (mpAdjustValue < 0) {
+            const newMinMP = minMP + mpAdjustValue;
+
+            for (
+                let i = minMP - 0.01;
+                i >= newMinMP - 0.01;
+                i -= 0.01
+            ) {
+                const mpFrom = Number(i.toFixed(2));
+
+                newRows.push({
+                    Route: sortedData[0].Route,
+                    Direction: sortedData[0].Direction,
+                    MPFrom: mpFrom,
+                    MPTo: Number((mpFrom + 0.01).toFixed(2)),
+                    LaneID: sortedData[0].LaneID,
+                    SectionID: sortedData[0].SectionID,
+                });
+            }
+        } else {
+            const newMaxMP = maxMP + mpAdjustValue;
+
+            for (
+                let i = maxMP + 0.01;
+                i <= newMaxMP + 0.01;
+                i += 0.01
+            ) {
+                const mpFrom = Number(i.toFixed(2));
+
+                newRows.push({
+                    Route: sortedData[0].Route,
+                    Direction: sortedData[0].Direction,
+                    MPFrom: mpFrom,
+                    MPTo: Number((mpFrom + 0.01).toFixed(2)),
+                    LaneID: sortedData[0].LaneID,
+                    SectionID: sortedData[0].SectionID,
+                });
+            }
+        }
+
+        return [...sortedData, ...newRows].sort(
+            (a, b) => Number(a.MPFrom) - Number(b.MPFrom)
+        );
+    };
+
+    const handleGPSAdjustment = async (pass, direction, overrideGPS = null, inputData = rawPayAdjustments) => {
+        const shiftPassData = (data, passNum, mpAdjustValue) => {
+            const avgKey = `AvgPass${passNum}`;
+            const leftKey = `LeftPass${passNum}`;
+            const rightKey = `RightPass${passNum}`;
+            const speedKey = `AvgSpeedPass${passNum}`;
+            const latKey = `LatPass${passNum}`;
+            const lonKey = `LonPass${passNum}`;
+
+            const tempPassFix = data.map(row => ({
+                MPFrom: Number(Number(row.MPFrom).toFixed(2)),
+                [avgKey]: row[avgKey],
+                [leftKey]: row[leftKey],
+                [rightKey]: row[rightKey],
+                [speedKey]: row[speedKey],
+                [latKey]: row[latKey],
+                [lonKey]: row[lonKey],
+            }));
+
+            const shiftedPassFix = tempPassFix.map(row => ({
+                ...row,
+                MPFrom: Number(
+                    (row.MPFrom + mpAdjustValue).toFixed(2)
+                ),
+            }));
+
+            const clearedData = data.map(row => ({
+                ...row,
+                [avgKey]: null,
+                [leftKey]: null,
+                [rightKey]: null,
+                [speedKey]: null,
+                [latKey]: null,
+                [lonKey]: null,
+            }));
+
+            const adjustedData = clearedData.map(row => {
+                const matchingPass = shiftedPassFix.find(
+                    tempRow =>
+                        Number(tempRow.MPFrom).toFixed(2) ===
+                        Number(row.MPFrom).toFixed(2)
+                );
+
+                if (!matchingPass) {
+                    return row;
+                }
+
+                return {
+                    ...row,
+
+                    [avgKey]: matchingPass[avgKey],
+                    [leftKey]: matchingPass[leftKey],
+                    [rightKey]: matchingPass[rightKey],
+                    [speedKey]: matchingPass[speedKey],
+                    [latKey]: matchingPass[latKey],
+                    [lonKey]: matchingPass[lonKey],
+                };
+            });
+
+            const finalData = adjustedData.filter(row =>
+                row.AvgPass1 != null ||
+                row.AvgPass2 != null ||
+                row.AvgPass3 != null
+            );
+
+            return finalData;
+        };
+
+        const calcAvgIRIAdjustment = (data) => {
+            return data.map(row => {
+                let count = 0;
+                let sum = 0;
+
+                // Pass 1
+                if (Number(row.AvgSpeedPass1) >= 16) {
+                    count++;
+                    sum += Number(row.AvgPass1) || 0;
+                }
+
+                // Pass 2
+                if (Number(row.AvgSpeedPass2) >= 16) {
+                    count++;
+                    sum += Number(row.AvgPass2) || 0;
+                }
+
+                // Pass 3
+                if (Number(row.AvgSpeedPass3) >= 16) {
+                    count++;
+                    sum += Number(row.AvgPass3) || 0;
+                }
+
+                let avgIRI;
+                let speedCorrApplied;
+
+                if (count > 0) {
+                    // Equivalent to wRoundDown(i / n, 0)
+                    avgIRI = Math.floor(sum / count);
+                }
+
+                if (count > 0 && count < 3) {
+                    speedCorrApplied = true;
+                } else if (count === 3) {
+                    speedCorrApplied = false;
+                } else {
+                    // No valid passes
+                    avgIRI = 0;
+                    speedCorrApplied = true;
+                }
+
+                return {
+                    ...row,
+                    AvgIRI: avgIRI,
+                    SpeedCorrApplied: speedCorrApplied,
+                };
+            });
+        };
+
+        const currentData = inputData.filter(row =>
+            row.Route === selectedSection.Route &&
+            row.Direction === selectedSection.Direction &&
+            row.LaneID === selectedSection.LaneID.slice(3) &&
+            row.SectionID === selectedSection.SectionID
+        );
+
+        const gpsValue = overrideGPS !== null ? Number(overrideGPS) : Number(gpsValues[`p${pass}`]) || 0.01;
+        const adjustment = Number((gpsValue * direction).toFixed(2));
+
+        const expandedData = createNewMileposts(currentData, adjustment);
+        const adjustedData = shiftPassData(expandedData, pass, adjustment);
+
+        const recalculatedData = calcAvgIRIAdjustment(adjustedData);
+
+        calcAverageStdDev(recalculatedData);
+        calcCorrelation(recalculatedData);
+        calcAvgIRI(recalculatedData);
+
+        const otherSections = inputData.filter(row =>
+            !(
+                row.Route === selectedSection.Route &&
+                row.Direction === selectedSection.Direction &&
+                row.LaneID === selectedSection.LaneID.slice(3) &&
+                row.SectionID === selectedSection.SectionID
+            )
+        );
+
+        const updatedRawPayAdjustments = [
+            ...otherSections,
+            ...recalculatedData,
+        ];
+
+        setRawPayAdjustments(updatedRawPayAdjustments);
+
+        setPasses(prev => {
+            const currentValue =
+                Number(prev[`pass${pass}Adjusted`]) || 0;
+
+            return {
+                ...prev,
+                [`pass${pass}Adjusted`]: Number(
+                    (currentValue + adjustment).toFixed(2)
+                ),
+            };
+        });
+
+        const updatedSectionData = updatedRawPayAdjustments.filter(row => (
+            row.Route === selectedSection.Route &&
+            row.Direction === selectedSection.Direction &&
+            row.LaneID === selectedSection.LaneID.slice(3) &&
+            row.SectionID === selectedSection.SectionID
+        ));
+
+        createChartData(updatedSectionData, selectedSection);
+        setBrushKey(prev => prev + 1);
+
+        return updatedRawPayAdjustments;
+    };
+
+    // async function handleAutoAdjust() {
+    //     const basePass = selectedSection.VideoPassNum || 1;
+
+    //     const validRows = rawPayAdjustments.filter(row =>
+    //         row.Route === selectedSection.Route &&
+    //         row.Direction === selectedSection.Direction &&
+    //         row.LaneID === selectedSection.LaneID.slice(3) &&
+    //         row.SectionID === selectedSection.SectionID &&
+    //         row.LatPass1 != null &&
+    //         row.LatPass2 != null &&
+    //         row.LatPass3 != null
+    //     );
+
+    //     const mileposts = validRows.map(row => Number(row.MPFrom));
+    //     let baseMilepost;
+    //     if (selectedSection.Direction === "N" || selectedSection.Direction === "E") {
+    //         baseMilepost = Math.min(...mileposts);
+    //     } else {
+    //         baseMilepost = Math.max(...mileposts);
+    //     }
+
+    //     const baseRow = validRows.find(
+    //         row => Number(row.MPFrom) === Number(baseMilepost)
+    //     );
+
+    //     if (!baseRow) {
+    //         return;
+    //     }
+
+    //     const basePassLat = Number(
+    //         baseRow[`LatPass${basePass}`]
+    //     );
+
+    //     const basePassLon = Number(
+    //         baseRow[`LonPass${basePass}`]
+    //     );
+
+    //     const pass1Lat = Number(baseRow.LatPass1);
+    //     const pass1Lon = Number(baseRow.LonPass1);
+
+    //     const pass2Lat = Number(baseRow.LatPass2);
+    //     const pass2Lon = Number(baseRow.LonPass2);
+
+    //     const pass3Lat = Number(baseRow.LatPass3);
+    //     const pass3Lon = Number(baseRow.LonPass3);
+
+    //     const p1GPS = Number(
+    //         (
+    //             0.00062137 *
+    //             getDistance(
+    //                 basePassLat,
+    //                 pass1Lat,
+    //                 basePassLon,
+    //                 pass1Lon
+    //             )
+    //         ).toFixed(2)
+    //     );
+
+    //     const p2GPS = Number(
+    //         (
+    //             0.00062137 *
+    //             getDistance(
+    //                 basePassLat,
+    //                 pass2Lat,
+    //                 basePassLon,
+    //                 pass2Lon
+    //             )
+    //         ).toFixed(2)
+    //     );
+
+    //     const p3GPS = Number(
+    //         (
+    //             0.00062137 *
+    //             getDistance(
+    //                 basePassLat,
+    //                 pass3Lat,
+    //                 basePassLon,
+    //                 pass3Lon
+    //             )
+    //         ).toFixed(2)
+    //     );
+
+    //     setGPSValues({
+    //         p1: p1GPS,
+    //         p2: p2GPS,
+    //         p3: p3GPS,
+    //     });
+
+    //     let adjustedData;
+    //     adjustedData = await handleGPSAdjustment(1, 1, p1GPS);
+    //     adjustedData = await handleGPSAdjustment(2, 1, p2GPS);
+    //     adjustedData = await handleGPSAdjustment(3, 1, p3GPS);
+    // }
+
+    async function handleAutoAdjust() {
+        const basePass = selectedSection.VideoPassNum || 1;
+
+        const getSectionData = data =>
+            data.filter(row =>
+                row.Route === selectedSection.Route &&
+                row.Direction === selectedSection.Direction &&
+                row.LaneID === selectedSection.LaneID.slice(3) &&
+                row.SectionID === selectedSection.SectionID
+            );
+
+        const getBaseRow = data => {
+            const validRows = getSectionData(data).filter(row =>
+                row.LatPass1 != null &&
+                row.LatPass2 != null &&
+                row.LatPass3 != null
+            );
+
+            if (!validRows.length) {
+                return null;
+            }
+
+            const mileposts = validRows.map(row => Number(row.MPFrom));
+
+            const baseMilepost =
+                selectedSection.Direction === "N" ||
+                    selectedSection.Direction === "E"
+                    ? Math.min(...mileposts)
+                    : Math.max(...mileposts);
+
+            return validRows.find(
+                row => Number(row.MPFrom) === Number(baseMilepost)
+            );
+        };
+
+        const calculateGPSValues = data => {
+            const baseRow = getBaseRow(data);
+
+            if (!baseRow) {
+                return null;
+            }
+
+            const basePassLat = Number(baseRow[`LatPass${basePass}`]);
+            const basePassLon = Number(baseRow[`LonPass${basePass}`]);
+
+            const pass1Lat = Number(baseRow.LatPass1);
+            const pass1Lon = Number(baseRow.LonPass1);
+
+            const pass2Lat = Number(baseRow.LatPass2);
+            const pass2Lon = Number(baseRow.LonPass2);
+
+            const pass3Lat = Number(baseRow.LatPass3);
+            const pass3Lon = Number(baseRow.LonPass3);
+
+            const p1GPS = Number(
+                (
+                    0.00062137 *
+                    getDistance(
+                        basePassLat,
+                        pass1Lat,
+                        basePassLon,
+                        pass1Lon
+                    )
+                ).toFixed(2)
+            );
+
+            const p2GPS = Number(
+                (
+                    0.00062137 *
+                    getDistance(
+                        basePassLat,
+                        pass2Lat,
+                        basePassLon,
+                        pass2Lon
+                    )
+                ).toFixed(2)
+            );
+
+            const p3GPS = Number(
+                (
+                    0.00062137 *
+                    getDistance(
+                        basePassLat,
+                        pass3Lat,
+                        basePassLon,
+                        pass3Lon
+                    )
+                ).toFixed(2)
+            );
+
+            return {
+                p1GPS,
+                p2GPS,
+                p3GPS,
+            };
+        };
+
+        let gps = calculateGPSValues(rawPayAdjustments);
+
+        if (!gps) {
+            return;
+        }
+
+        const initialGPS = {
+            p1GPS: gps.p1GPS,
+            p2GPS: gps.p2GPS,
+            p3GPS: gps.p3GPS,
+        };
+
+        setGPSValues({
+            p1: gps.p1GPS,
+            p2: gps.p2GPS,
+            p3: gps.p3GPS,
+        });
+
+        let adjustedData = rawPayAdjustments;
+
+        adjustedData = await handleGPSAdjustment(1, 1, gps.p1GPS, adjustedData);
+        adjustedData = await handleGPSAdjustment(2, 1, gps.p2GPS, adjustedData);
+        adjustedData = await handleGPSAdjustment(3, 1, gps.p3GPS, adjustedData);
+
+        gps = calculateGPSValues(adjustedData);
+
+        if (!gps) {
+            return adjustedData;
+        }
+
+        const correctionGPS = {
+            p1GPS: gps.p1GPS,
+            p2GPS: gps.p2GPS,
+            p3GPS: gps.p3GPS,
+        };
+
+        if (correctionGPS.p1GPS !== 0) {
+            adjustedData = await handleGPSAdjustment(
+                1,
+                -1,
+                correctionGPS.p1GPS,
+                adjustedData
+            );
+        }
+
+        if (correctionGPS.p2GPS !== 0) {
+            adjustedData = await handleGPSAdjustment(
+                2,
+                -1,
+                correctionGPS.p2GPS,
+                adjustedData
+            );
+        }
+
+        if (correctionGPS.p3GPS !== 0) {
+            adjustedData = await handleGPSAdjustment(
+                3,
+                -1,
+                correctionGPS.p3GPS,
+                adjustedData
+            );
+        }
+
+        gps = calculateGPSValues(adjustedData);
+
+        if (!gps) {
+            return adjustedData;
+        }
+
+        const finalGPS = {
+            p1GPS: gps.p1GPS,
+            p2GPS: gps.p2GPS,
+            p3GPS: gps.p3GPS,
+        };
+
+        setGPSValues({
+            p1: gps.p1GPS,
+            p2: gps.p2GPS,
+            p3: gps.p3GPS,
+        });
+
+        return adjustedData;
+    }
+
     return (
-        <div className="p-4 space-y-4">
-            <div className="flex items-center gap-3">
-                <label className="text-sm font-bold text-black w-24">
-                    Test Vehicle:
-                </label>
+        <div className="w-full p-4">
+            {/* Top Row */}
+            <div className="flex flex-col xl:flex-row gap-8 p-4 w-full">
+                <div className="flex-shrink-0 space-y-4">
+                    {/* Test Vehicle */}
+                    <div className="flex items-center gap-3">
+                        <label className="text-sm font-bold text-black w-24">
+                            Test Vehicle:
+                        </label>
 
-                <select
-                    value={importType}
-                    onChange={(e) => {
-                        setImportType(e.target.value);
-                        setFieldcrewSheet("");
-                        setSelectedFieldcrewSheet(null);
-                        setIndividualTestsText("");
-                        setIndividualTestFiles([]);
-                    }}
-                    className="w-32 h-8 border border-gray-500 rounded px-2 bg-white text-sm text-black"
-                >
-                    <option value="">Select a vehicle</option>
-                    <option value="Pathway">Pathway</option>
-                    <option value="Dynatest">Dynatest</option>
-                </select>
-            </div>
-
-            {/* Fieldcrew Sheet */}
-            <div className="flex items-center gap-3">
-                <label className="text-sm font-bold text-black w-16">
-                    File:
-                </label>
-
-                <div className="flex items-center gap-2 flex-1">
-                    <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
-                        {fieldcrewSheet || "No files selected"}
-                    </span>
-
-                    <button
-                        type="button"
-                        onClick={() => fieldcrewRef.current.click()}
-                        className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
-                    >
-                        Browse
-                    </button>
-
-                    <button
-                        type="button"
-                        onClick={handleImport}
-                        className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
-                        disabled={
-                            (importType === "Dynatest" && (!selectedFieldcrewSheet || individualTestFiles.length === 0)) ||
-                            (importType === "Pathway" && !selectedFieldcrewSheet)
-                        }
-                    >
-                        Import
-                    </button>
-
-                    <input
-                        ref={fieldcrewRef}
-                        type="file"
-                        accept=".xlsx,.xls"
-                        onChange={handleSheetChange}
-                        className="hidden"
-                    />
-                </div>
-            </div>
-
-            {/* Individual Test Files */}
-            {importType === "Dynatest" &&
-                <div className="flex items-center gap-3">
-                    <label className="text-sm font-bold text-black w-16">
-                        Tests:
-                    </label>
-
-                    <div className="flex items-center gap-2 flex-1">
-                        <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
-                            {individualTestsText || "No files selected"}
-                        </span>
-
-                        <button
-                            type="button"
-                            onClick={() => individualTestsRef.current.click()}
-                            className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                        <select
+                            value={importType}
+                            onChange={(e) => {
+                                setImportType(e.target.value);
+                                setFieldcrewSheet("");
+                                setSelectedFieldcrewSheet(null);
+                                setIndividualTestsText("");
+                                setIndividualTestFiles([]);
+                            }}
+                            className="w-32 h-8 border border-gray-500 rounded px-2 bg-white text-sm text-black"
                         >
-                            Browse
-                        </button>
+                            <option value="">Select a vehicle</option>
+                            <option value="Pathway">Pathway</option>
+                            <option value="Dynatest">Dynatest</option>
+                        </select>
+                    </div>
 
-                        <input
-                            ref={individualTestsRef}
-                            type="file"
-                            accept=".xlsx,.xls,.xlsb"
-                            multiple
-                            onChange={handleIndividualTestsChange}
-                            className="hidden"
-                        />
+                    {/* Fieldcrew Sheet */}
+                    <div className="flex items-center gap-3">
+                        <label className="text-sm font-bold text-black w-16">
+                            File:
+                        </label>
+
+                        <div className="flex items-center gap-2 flex-1">
+                            <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
+                                {fieldcrewSheet || "No files selected"}
+                            </span>
+
+                            <button
+                                type="button"
+                                onClick={() => fieldcrewRef.current.click()}
+                                className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                            >
+                                Browse
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={handleImport}
+                                className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                                disabled={
+                                    (importType === "Dynatest" &&
+                                        (!selectedFieldcrewSheet ||
+                                            individualTestFiles.length === 0)) ||
+                                    (importType === "Pathway" && !selectedFieldcrewSheet)
+                                }
+                            >
+                                Import
+                            </button>
+
+                            <input
+                                ref={fieldcrewRef}
+                                type="file"
+                                accept=".xlsx,.xls"
+                                onChange={handleSheetChange}
+                                className="hidden"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Individual Test Files */}
+                    {importType === "Dynatest" && (
+                        <div className="flex items-center gap-3">
+                            <label className="text-sm font-bold text-black w-16">
+                                Tests:
+                            </label>
+
+                            <div className="flex items-center gap-2 flex-1">
+                                <span className="w-64 h-8 border border-gray-500 rounded px-2 flex items-center bg-white text-sm text-black">
+                                    {individualTestsText || "No files selected"}
+                                </span>
+
+                                <button
+                                    type="button"
+                                    onClick={() => individualTestsRef.current.click()}
+                                    className="bg-blue-500 text-white px-4 h-8 rounded hover:bg-blue-600"
+                                >
+                                    Browse
+                                </button>
+
+                                <input
+                                    ref={individualTestsRef}
+                                    type="file"
+                                    accept=".xlsx,.xls,.xlsb"
+                                    multiple
+                                    onChange={handleIndividualTestsChange}
+                                    className="hidden"
+                                />
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* Uploaded Sections */}
+                <div className='flex-shrink-0'>
+                    <div className="text-xs font-bold text-black">
+                        Uploaded Sections Limits - Click a lane in
+                        <br />
+                        the list to update the chart.
+                    </div>
+
+                    {/* List Box */}
+                    <div className="mt-1 w-[300px] h-[160px] border border-gray-400 bg-white overflow-y-auto">
+                        {/* Header */}
+                        <div className="flex bg-gray-100 border-b border-gray-400 text-xs text-black sticky top-0">
+                            <div className="w-12 px-1 py-0.5 border-r border-gray-300">
+                                Rte
+                            </div>
+
+                            <div className="w-16 px-1 py-0.5 border-r border-gray-300">
+                                Direction
+                            </div>
+
+                            <div className="w-16 px-1 py-0.5 border-r border-gray-300">
+                                Lane
+                            </div>
+
+                            <div className="w-14 px-1 py-0.5 border-r border-gray-300">
+                                MPStart
+                            </div>
+
+                            <div className="w-14 px-1 py-0.5">
+                                MPEnd
+                            </div>
+                        </div>
+
+                        {/* Rows */}
+                        {MPAdjustments
+                            .sort((a, b) => {
+                                const laneA = String(a.LaneID);
+                                const laneB = String(b.LaneID);
+
+                                return (
+                                    String(a.Route).localeCompare(String(b.Route)) ||
+                                    laneA.slice(0, 1).localeCompare(laneB.slice(0, 1)) ||
+                                    Number(laneA.slice(3)) - Number(laneB.slice(3))
+                                );
+                            })
+                            .map((section, index) => (
+                                <div
+                                    key={index}
+                                    onClick={() => {
+                                        handleSectionChange(section);
+                                    }}
+                                    className={`flex text-xs cursor-pointer ${selectedSection === section
+                                        ? "bg-black text-white"
+                                        : "text-black hover:bg-blue-100"
+                                        }`}
+                                >
+                                    <div className="w-12 px-1 py-0.5 border-r border-gray-300">
+                                        {section.Route}
+                                    </div>
+
+                                    <div className="w-16 px-1 py-0.5 border-r border-gray-300">
+                                        {section.Direction}
+                                    </div>
+
+                                    <div className="w-16 px-1 py-0.5 border-r border-gray-300">
+                                        {section.LaneID.slice(3)}
+                                    </div>
+
+                                    <div className="w-14 px-1 py-0.5 border-r border-gray-300">
+                                        {section.MPStart}
+                                    </div>
+
+                                    <div className="w-14 px-1 py-0.5">
+                                        {section.MPEnd}
+                                    </div>
+                                </div>
+                            ))}
                     </div>
                 </div>
-            }
+
+                {/* Dynatest Limits */}
+                <div className="min-w-0">
+                    <div className="text-xs font-bold text-black">
+                        Dynatest Worksheet Limits - Compare with Range of mileposts
+                        <br />
+                        below to verify full limits were covered in the test.
+                    </div>
+
+                    {/* List Box */}
+                    <div className="mt-1 w-full max-w-[600px] h-[160px] border border-gray-400 bg-white overflow-y-auto">
+
+                        {/* Header */}
+                        <div className="flex min-w-[400px] bg-gray-100 border-b border-gray-400 text-xs text-black sticky top-0">
+                            <div className="flex-1 min-w-[40px] px-1 py-0.5 border-r border-gray-300">
+                                Rte
+                            </div>
+
+                            <div className="flex-1 min-w-[60px] px-1 py-0.5 border-r border-gray-300">
+                                Direction
+                            </div>
+
+                            <div className="flex-1 min-w-[40px] px-1 py-0.5 border-r border-gray-300">
+                                Lane
+                            </div>
+
+                            <div className="flex-1 min-w-[60px] px-1 py-0.5 border-r border-gray-300">
+                                MPStart
+                            </div>
+
+                            <div className="flex-1 min-w-[60px] px-1 py-0.5 border-r border-gray-300">
+                                MPEnd
+                            </div>
+
+                            <div className="flex-1 min-w-[80px] px-1 py-0.5">
+                                Trigger Info
+                            </div>
+                        </div>
+
+                        {/* Rows */}
+                        {dynatestWorksheet
+                            .filter((section) => section.PassNumber?.includes("P1"))
+                            .sort((a, b) => (
+                                String(a.Route).localeCompare(String(b.Route)) ||
+                                String(a.Direction).localeCompare(String(b.Direction)) ||
+                                Number(String(a.LaneID).slice(1)) -
+                                Number(String(b.LaneID).slice(1))
+                            ))
+                            .map((section, index) => (
+                                <div
+                                    key={index}
+                                    className="flex min-w-[400px] text-xs cursor-pointer text-black hover:bg-blue-100"
+                                >
+                                    <div className="flex-1 min-w-[40px] px-1 py-0.5 border-r border-gray-300 truncate">
+                                        {section.Route}
+                                    </div>
+
+                                    <div className="flex-1 min-w-[60px] px-1 py-0.5 border-r border-gray-300 truncate">
+                                        {section.Direction}
+                                    </div>
+
+                                    <div className="flex-1 min-w-[40px] px-1 py-0.5 border-r border-gray-300 truncate">
+                                        {section.LaneID.slice(1)}
+                                    </div>
+
+                                    <div className="flex-1 min-w-[60px] px-1 py-0.5 border-r border-gray-300 truncate">
+                                        {section.MPFrom}
+                                    </div>
+
+                                    <div className="flex-1 min-w-[60px] px-1 py-0.5 border-r border-gray-300 truncate">
+                                        {section.MPTo}
+                                    </div>
+
+                                    <div className="flex-1 min-w-[80px] px-1 py-0.5 truncate">
+                                        {section.Comments}
+                                    </div>
+                                </div>
+                            ))}
+                    </div>
+                </div>
+
+                {/* Summary Fields */}
+                <div className="flex-shrink-0 flex gap-3">
+
+                    {/* Column 1 */}
+                    <div className="flex flex-col gap-3 w-28">
+                        <div className=" min-h-8 text-l font-bold text-red-600 leading-tight break-words">
+                            {warning1 && `WARNING!! Large discrepancy in collected miles`}
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 1 Miles</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning1 ? "text-red-600" : "text-black"}`}>
+                                {passes.pass1Miles}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 2 Miles</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning1 ? "text-red-600" : "text-black"}`}>
+                                {passes.pass2Miles}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 3 Miles</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning1 ? "text-red-600" : "text-black"}`}>
+                                {passes.pass3Miles}
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    {/* Column 2 */}
+                    <div className="flex flex-col gap-3 w-28">
+                        <div className="min-h-8 text-l font-bold text-red-600 leading-tight break-words">
+                            {warning2 && `WARNING!! Unusually High Standard Deviation`}
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Average StdDev</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning2 ? "text-red-600" : "text-black"}`}>
+                                {passes.averageStdDev}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 1 Avg IRI</span>
+                            <div className="font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                {passes.pass1AvgIRI}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 2 Avg IRI</span>
+                            <div className="font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                {passes.pass2AvgIRI}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 3 Avg IRI</span>
+                            <div className="font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                {passes.pass3AvgIRI}
+                            </div>
+                        </div>
+
+                    </div>
+
+
+                    {/* Column 3 */}
+                    <div className="flex flex-col gap-3 w-28">
+                        <div className="min-h-8 text-l font-bold text-red-600 leading-tight break-words">
+                            {warning3 && `WARNING!! Poor Correlation Detected`}
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 1,2 correl.</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning3 ? "text-red-600" : "text-black"}`}>
+                                {passes.pass12Correlation}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 1,3 correl.</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning3 ? "text-red-600" : "text-black"}`}>
+                                {passes.pass13Correlation}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Pass 2,3 correl.</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning3 ? "text-red-600" : "text-black"}`}>
+                                {passes.pass23Correlation}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-sm text-black">Average correl.</span>
+                            <div className={`font-bold w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm ${warning3 ? "text-red-600" : "text-black"}`}>
+                                {passes.averageCorrelation}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Options Row */}
+            <div className="flex flex-wrap items-center gap-6 mt-6">
+                <label className="flex items-center gap-2 text-m text-black cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={viewPasses.pass1}
+                        onChange={(e) =>
+                            setViewPasses((prev) => ({
+                                ...prev,
+                                pass1: e.target.checked
+                            }))
+                        }
+                        className="w-4 h-4"
+                    />
+                    <span>View Pass 1</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-m text-black cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={viewPasses.pass2}
+                        onChange={(e) =>
+                            setViewPasses((prev) => ({
+                                ...prev,
+                                pass2: e.target.checked
+                            }))
+                        }
+                        className="w-4 h-4"
+                    />
+                    <span>View Pass 2</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-m text-black cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={viewPasses.pass3}
+                        onChange={(e) =>
+                            setViewPasses((prev) => ({
+                                ...prev,
+                                pass3: e.target.checked
+                            }))
+                        }
+                        className="w-4 h-4"
+                    />
+                    <span>View Pass 3</span>
+                </label>
+
+                <label className="flex items-center gap-2 text-m text-black cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={viewPasses.pass4}
+                        onChange={(e) =>
+                            setViewPasses((prev) => ({
+                                ...prev,
+                                pass4: e.target.checked
+                            }))
+                        }
+                        className="w-4 h-4"
+                    />
+                    <span>View Pass 4</span>
+                </label>
+
+                <div className="flex items-center gap-2">
+                    <span className="text-m text-black">
+                        Route:
+                    </span>
+                    <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-m text-black">
+                        {selectedSection?.Route ?? ""}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <span className="text-m text-black">
+                        Direction:
+                    </span>
+                    <div className="w-24 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-m text-black">
+                        {selectedSection?.Direction ?? ""}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <span className="text-m text-black">
+                        Lane:
+                    </span>
+                    <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-m text-black">
+                        {selectedSection?.LaneID.slice(3) ?? ""}
+                    </div>
+                </div>
+
+                <fieldset className="border border-gray-500 rounded px-3 pb-2 pt-0 flex items-center gap-4">
+                    <legend className="px-1 text-sm font-bold text-black">
+                        MP Range covered by all 3 passes:
+                    </legend>
+
+                    {/* MP Start */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-m text-black">
+                            MPStart:
+                        </span>
+                        <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-m text-black">
+                            {passes.mpStart ?? ""}
+                        </div>
+                    </div>
+
+                    {/* MP End */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-m text-black">
+                            MPEnd:
+                        </span>
+                        <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-m text-black">
+                            {passes.mpEnd ?? ""}
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            {/* Chart Row */}
+            <div className="flex flex-col xl:flex-row items-start gap-6 mt-6 w-full">
+                {/* LEFT - Chart */}
+                <div className="flex-1 min-w-[500px] max-w-[1388px]">
+                    <div className="border border-gray-500 rounded bg-white p-2 w-full h-[600px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart
+                                data={chartData}
+                                margin={{
+                                    top: 40,
+                                    right: 20,
+                                    left: 10,
+                                    bottom: 30,
+                                }}
+                            >
+                                <text
+                                    x="50%"
+                                    y={20}
+                                    textAnchor="middle"
+                                    fontSize={18}
+                                    fontWeight="bold"
+                                    fill="#000"
+                                >
+                                    Ride Quality IRI
+                                </text>
+
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis
+                                    dataKey="MPFrom"
+                                    tick={{ fontWeight: "bold" }}
+                                    label={{
+                                        value: "Milepost",
+                                        position: "bottom",
+                                        offset: 10,
+                                        fontWeight: "bold",
+                                    }}
+                                />
+                                <YAxis
+                                    tick={{ fontWeight: "bold" }}
+                                    label={{
+                                        value: "IRI",
+                                        angle: -90,
+                                        position: "insideLeft",
+                                        fontWeight: "bold",
+                                    }}
+                                />
+                                <Tooltip
+                                    labelFormatter={(value) => `MP: ${value}`}
+                                    labelStyle={{
+                                        color: "#000",
+                                        fontWeight: "bold",
+                                    }}
+                                />
+
+
+                                <Legend
+                                    layout="vertical"
+                                    align="right"
+                                    verticalAlign="top"
+                                    wrapperStyle={{
+                                        right: -10,
+                                        width: 100,
+                                    }}
+                                />
+
+                                {viewPasses.pass1 && (
+                                    <Line
+                                        isAnimationActive={false}
+                                        type="linear"
+                                        dataKey="AvgPass1"
+                                        name="AvgPass1"
+                                        stroke="#000080"
+                                        dot={{ r: 2 }}
+                                    />
+                                )}
+
+                                {viewPasses.pass2 && (
+                                    <Line
+                                        isAnimationActive={false}
+                                        type="linear"
+                                        dataKey="AvgPass2"
+                                        name="AvgPass2"
+                                        stroke="#008000"
+                                        dot={{ r: 2 }}
+                                    />
+                                )}
+
+                                {viewPasses.pass3 && (
+                                    <Line
+                                        isAnimationActive={false}
+                                        type="linear"
+                                        dataKey="AvgPass3"
+                                        name="AvgPass3"
+                                        stroke="#FF0000"
+                                        dot={{ r: 2 }}
+                                    />
+                                )}
+
+                                {viewPasses.pass4 && (
+                                    <Line
+                                        isAnimationActive={false}
+                                        type="linear"
+                                        dataKey="AvgIRI"
+                                        name="AvgIRI"
+                                        stroke="#000000"
+                                        dot={{ r: 2 }}
+                                    />
+                                )}
+
+                                <Brush
+                                    key={brushKey}
+                                    dataKey="MPFrom"
+                                    height={30}
+                                    stroke="#8884d8"
+                                    startIndex={0}
+                                    endIndex={Math.min(29, chartData.length - 1)}
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Auto Adjust Button */}
+                <div className="flex-shrink-0 flex items-center justify-center">
+                    <button
+                        type="button"
+                        onClick={handleAutoAdjust}
+                        className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                    >
+                        Auto Adjust
+                    </button>
+                </div>
+
+                {/* Reference Fields */}
+                <div className="flex-shrink-0 flex flex-col gap-3">
+                    <div className="flex items-center justify-center gap-2">
+                        <label className="text-sm font-bold text-black">
+                            Reference Pass (video pass):
+                        </label>
+
+                        <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                            {selectedSection?.VideoPassNum ?? ""}
+                        </div>
+                    </div>
+
+                    <fieldset className="border border-gray-500 rounded px-3 pb-3 pt-1">
+                        <legend className="px-1 text-sm font-bold text-black">
+                            MP Distance from Reference Pass
+                        </legend>
+
+                        <div className="flex flex-col gap-2">
+                            {/* Pass 1 */}
+                            <div className="flex items-center gap-2 text-black">
+                                <span className="w-12 text-sm text-black">
+                                    Pass 1:
+                                </span>
+
+                                <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                    {gpsValues.p1 ?? 0}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleGPSAdjustment(1, -1, 0.01)}
+                                    className="text-white w-7 h-7 rounded bg-blue-500 hover:bg-blue-600"
+                                >
+                                    -
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleGPSAdjustment(1, 1, 0.01)}
+                                    className="text-white w-7 h-7 rounded bg-blue-500 hover:bg-blue-600"
+                                >
+                                    +
+                                </button>
+
+                                <span className="w-28 text-sm text-black">
+                                    Pass 1 Adjusted:
+                                </span>
+                                <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                    {passes.pass1Adjusted ?? 0}
+                                </div>
+                            </div>
+
+                            {/* Pass 2 */}
+                            <div className="flex items-center gap-2">
+                                <span className="w-12 text-sm text-black">
+                                    Pass 2:
+                                </span>
+
+                                <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                    {gpsValues.p2 ?? 0}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleGPSAdjustment(2, -1, 0.01)}
+                                    className="text-white w-7 h-7 rounded bg-blue-500 hover:bg-blue-600"
+                                >
+                                    -
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleGPSAdjustment(2, 1, 0.01)}
+                                    className="text-white w-7 h-7 rounded bg-blue-500 hover:bg-blue-600"
+                                >
+                                    +
+                                </button>
+
+                                <span className="w-28 text-sm text-black">
+                                    Pass 2 Adjusted:
+                                </span>
+                                <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                    {passes.pass2Adjusted ?? 0}
+                                </div>
+                            </div>
+
+                            {/* Pass 3 */}
+                            <div className="flex items-center gap-2">
+                                <span className="w-12 text-sm text-black">
+                                    Pass 3:
+                                </span>
+
+                                <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                    {gpsValues.p3 ?? 0}
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleGPSAdjustment(3, -1, 0.01)}
+                                    className="text-white w-7 h-7 rounded bg-blue-500 hover:bg-blue-600"
+                                >
+                                    -
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => handleGPSAdjustment(3, 1, 0.01)}
+                                    className="text-white w-7 h-7 rounded bg-blue-500 hover:bg-blue-600"
+                                >
+                                    +
+                                </button>
+
+                                <span className="w-28 text-sm text-black">
+                                    Pass 3 Adjusted:
+                                </span>
+                                <div className="w-20 h-8 border border-gray-500 rounded px-2 flex items-center bg-gray-100 text-sm text-black">
+                                    {passes.pass3Adjusted ?? 0}
+                                </div>
+                            </div>
+
+                        </div>
+                    </fieldset>
+
+                    <div className="h-8 text-lg font-bold text-red-600 text-center">
+                        If any number is auto-populated in the left
+                        <br />
+                        text boxes above, it indicates adjustments
+                        <br />
+                        may be neccessary to align the passes. If
+                        <br />
+                        0.01 is shown, there is a possibility that
+                        <br />
+                        adjusting the pass will not improve the
+                        <br />
+                        alignment. Verify the chart and the
+                        <br />
+                        calculated statistics above after any
+                        <br />
+                        alignments are attempted.
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

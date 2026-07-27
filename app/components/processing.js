@@ -1514,12 +1514,21 @@ function RideQualityChecker() {
         const fieldcrewSheet = workbook.Sheets[workbook.SheetNames[0]];
         let jsonFieldcrew = XLSX.utils.sheet_to_json(fieldcrewSheet);
 
+        const title = jsonFieldcrew[0]?.["PAVEMENT MANAGEMENT AND TECHNOLOGY"];
+
+        if (typeof title !== "string" || !title.startsWith("Ride Quality Acceptance Field Information")) {
+            alert("Import failed.\n\nThe selected file is not a valid Field Crew file.");
+            return;
+        }
+
         const { formattedFieldCrew } = formatFieldCrewData(jsonFieldcrew);
         const distinctRoutes = [...new Set(formattedFieldCrew.map(row => row.Route))];
 
         const processedRawData = new Map();
         let startLimit = null;
         let endLimit = null;
+
+        const missingTestFiles = [];
 
         for (const route of distinctRoutes) {
             let firstPass = true;
@@ -1552,7 +1561,8 @@ function RideQualityChecker() {
                 }
 
                 if (!excelFile) {
-                    alert(`Could not find test file: ${fileName}`);
+                    // alert(`Could not find test file: ${fileName}`);
+                    missingTestFiles.push(fileName);
                     continue;
                 }
 
@@ -1668,6 +1678,12 @@ function RideQualityChecker() {
                     }
                 }
             }
+        }
+
+        // If any missing files, exit processing
+        if (missingTestFiles.length > 0) {
+            alert("Import failed.\n\nThe following test files could not be found:\n\n" + missingTestFiles.join(", "));
+            return;
         }
 
         // Remove rows where avg speed passes = 0
@@ -1985,6 +2001,41 @@ function RideQualityChecker() {
         const fieldcrewSheet = workbook.Sheets[workbook.SheetNames[0]];
         let jsonFieldcrew = XLSX.utils.sheet_to_json(fieldcrewSheet);
 
+        // Validate using headers
+        const requiredColumns = [
+            "Direction",
+            "EndLat",
+            "EndLong",
+            "IRIAVG",
+            "IRILWP",
+            "IRIRWP",
+            "LaneID",
+            "MPFrom",
+            "MPTo",
+            "MacroTexture",
+            "Pass",
+            "Route",
+            "StartLat",
+            "StartLong",
+            "VANSpeed"
+        ];
+
+        const fileColumns = Object.keys(jsonFieldcrew[0]);
+        const missingColumns = requiredColumns.filter(
+            column => !fileColumns.includes(column)
+        );
+
+        if (missingColumns.length > 0) {
+            alert(
+                "Import failed.\n\n" +
+                "The selected file is not a valid Field Crew file.\n\n" +
+                "Missing columns:\n\n" +
+                missingColumns.join("\n")
+            );
+
+            return;
+        }
+
         const formattedFieldCrew = formatPathwayData(jsonFieldcrew);
         rawPayAdjustment = createRawPayAdjustment(formattedFieldCrew);
         rawPayAdjustment = calcAvgIRIPathway(rawPayAdjustment);
@@ -1995,7 +2046,7 @@ function RideQualityChecker() {
         } = createMPAdjustmentTable(rawPayAdjustment);
 
         alert("Raw Data Imported Successfully");
-        
+
         setDynatestWorksheet(formattedFieldCrew);
         setRawPayAdjustments(rawPayAdjustment);
         setMPAdjustments(mpAdjustments);

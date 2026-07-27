@@ -1,14 +1,14 @@
 import { getEquipmentTables, insertNewEquipment, updateExistingEquipment, insertNewIssue, updateExistingIssue } from "../utils/supabase/queries";
 import { useQuery } from '@tanstack/react-query'
 
-import React, {useEffect, useState, useMemo} from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 
 export default function test() {
     const tabs = [
-        { id: "equipQA", label: "Equipment QA Assurance", content: "Equipment QA"},
-        { id: "dataIssues", label: "Data Collection Issues", content: "Data"}
+        { id: "equipQA", label: "Equipment QA Assurance", content: "Equipment QA" },
+        { id: "dataIssues", label: "Data Collection Issues", content: "Data" }
     ];
-    
+
     const [activeTab, setActiveTab] = useState(tabs[0].id);
     // const [lookups, setLookups] = useState({
     //     verification: [],
@@ -29,7 +29,8 @@ export default function test() {
     const {
         data: lookups,
         isLoading,
-        isError
+        isError,
+        refetch
     } = useQuery({
         queryKey: ['equipmentTables'],
         queryFn: getEquipmentTables
@@ -49,30 +50,30 @@ export default function test() {
             <div className="text-black flex max-w-screen bg-gray-400 h-12">
                 {tabs.map((tab) => (
                     <button className=
-                    {
-                    `text-black border-2 text-center w-56 h-12 
+                        {
+                            `text-black border-2 text-center w-56 h-12 
                     ${activeTab === tab.id ? "bg-green-200 bold hover:bg-green-400" : "bg-white hover:bg-gray-300"}`
-                    }
-                    key={tab.id} 
-                    onClick={() => setActiveTab(tab.id)} 
-                    style={{
-                        fontWeight: activeTab === tab.id ? "bold" : "normal",
-                    }}>
-                    {tab.label}
+                        }
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        style={{
+                            fontWeight: activeTab === tab.id ? "bold" : "normal",
+                        }}>
+                        {tab.label}
                     </button>
                 ))}
             </div>
 
             {/* Equipment QA Form */}
             <div className="bg-[#D1EAF0] w-full h-full overflow-y-auto">
-                {activeTab === "equipQA" && <EquipmentQAForm lookups={lookups} />}
+                {activeTab === "equipQA" && <EquipmentQAForm lookups={lookups} refetch={refetch} />}
                 {activeTab === "dataIssues" && <DataIssuesForm lookups={lookups} />}
             </div>
         </div>
     );
 }
 
-function EquipmentQAForm({ lookups }) {
+function EquipmentQAForm({ lookups, refetch }) {
     const [certificationType, setCertificationType] = useState("");
     const [equipmentType, setEquipmentType] = useState("");
     const [equipmentName, setEquipmentName] = useState("");
@@ -116,7 +117,7 @@ function EquipmentQAForm({ lookups }) {
             certifications: selectedCertifications,
             Existing_QAID: QAID
         };
-        
+
         // try {
         //     const res = await fetch(`${API}/api/verificationResult/upload-qa`, {
         //         method: "POST",
@@ -131,13 +132,19 @@ function EquipmentQAForm({ lookups }) {
         // } catch (err) {
         //     console.error("Submit error:", err);
         // }
-        
+
         const res = recordType === "New Record" ? await insertNewEquipment(payload) : await updateExistingEquipment(payload);
 
         alert(res.message);
+
+        await refetch();
+
+        if (recordType === "Existing Record" && verificationFilter != "") {
+            setVerificationFilter(verificationResult);
+        }
     };
 
-    return(
+    return (
         <form className='text-black p-6 w-full max-w-6xl mx-auto'>
             <div className="w-36 mb-8">
                 <label className="block text-sm mb-1 font-bold">
@@ -145,6 +152,7 @@ function EquipmentQAForm({ lookups }) {
                 </label>
                 <select className="w-full border p-2 rounded bg-white" onChange={(e) => {
                     setRecordType(e.target.value)
+                    setQAID("");
 
                     setCertificationType("")
                     setEquipmentName("")
@@ -160,7 +168,7 @@ function EquipmentQAForm({ lookups }) {
                     <option>Existing Record</option>
                 </select>
             </div>
-            
+
             {/* Filters */}
             {recordType === "Existing Record" && (
                 <fieldset className="border-2 border-red-500 rounded-lg p-4 mb-6">
@@ -173,39 +181,39 @@ function EquipmentQAForm({ lookups }) {
                             QA ID
                         </label>
                         <select value={QAID}
-                        onChange={(e) => {
-                            const QAID = e.target.value;
-                            setQAID(e.target.value);
+                            onChange={(e) => {
+                                const QAID = e.target.value;
+                                setQAID(e.target.value);
 
-                            const record = lookups?.QACerts.find(
-                                item => item.QAID === QAID
-                            );
+                                const record = lookups?.QACerts.find(
+                                    item => item.QAID === QAID
+                                );
 
-                            if (!record) return;
-                            
-                            if (record["Certification Type"] === "Equipment Verification") {
-                                setCertificationType("Equipment");
-                            } else {
-                            setCertificationType(record["Certification Type"]);
-                        }
+                                if (!record) return;
 
-                            setEquipmentName(record["Equipment Name"]);
-                            setEquipmentType(record["Equipment Type"]);
-                            setSelectedCertifications([record["Certification Name"]]);
-                            
-                            if (record["Verification Result"] === null) {
-                                setVerificationResult("");
-                                setVerificationFilter("");
-                            } else {
-                                setVerificationResult(record["Verification Result"]);
-                                setVerificationFilter(record["Verification Result"]);
-                            }
-                            setCreatedBy(record["Created By"]);
-                            setDateRecord(record["Created On"].split("T")[0]);
-                            setDateCert(record["Date Certification"].split("T")[0]);
-                            setComments(record["Comments"]);
-                        }}
-                        className={`w-full border p-2 rounded bg-white`}>
+                                if (record["Certification Type"] === "Equipment Verification") {
+                                    setCertificationType("Equipment");
+                                } else {
+                                    setCertificationType(record["Certification Type"]);
+                                }
+
+                                setEquipmentName(record["Equipment Name"]);
+                                setEquipmentType(record["Equipment Type"]);
+                                setSelectedCertifications([record["Certification Name"]]);
+
+                                if (record["Verification Result"] === null) {
+                                    setVerificationResult("");
+                                    //setVerificationFilter("");
+                                } else {
+                                    setVerificationResult(record["Verification Result"]);
+                                    //setVerificationFilter(record["Verification Result"]);
+                                }
+                                //setCreatedBy(record["Created By"]);
+                                //setDateRecord(record["Created On"].split("T")[0]);
+                                setDateCert(record["Date Certification"].split("T")[0]);
+                                setComments(record["Comments"]);
+                            }}
+                            className={`w-full border p-2 rounded bg-white`}>
                             <option>-- Select --</option>
 
                             {filteredQACerts.slice().sort((a, b) => b.QAID.localeCompare(a.QAID)).map((item, index) => (
@@ -223,6 +231,7 @@ function EquipmentQAForm({ lookups }) {
                             </label>
                             <select value={createdBy} onChange={(e) => {
                                 setCreatedBy(e.target.value);
+                                setQAID("")
 
                                 setCertificationType("")
                                 setEquipmentName("")
@@ -246,6 +255,7 @@ function EquipmentQAForm({ lookups }) {
                             </label>
                             <select value={dateRecord} onChange={(e) => {
                                 setDateRecord(e.target.value);
+                                setQAID("")
 
                                 setCertificationType("")
                                 setEquipmentName("")
@@ -269,6 +279,7 @@ function EquipmentQAForm({ lookups }) {
                             </label>
                             <select value={verificationFilter} onChange={(e) => {
                                 setVerificationFilter(e.target.value);
+                                setQAID("")
 
                                 setCertificationType("")
                                 setEquipmentName("")
@@ -317,8 +328,8 @@ function EquipmentQAForm({ lookups }) {
                         <label className="block text-sm mb-1 font-bold">
                             Equipment Type
                         </label>
-                        <select value={equipmentType} onChange={(e) => setEquipmentType(e.target.value)} disabled={(certificationType !== "Equipment" && recordType === "New Record") || (recordType === "Existing Record")} 
-                        className={`w-full border p-2 rounded bg-white ${certificationType === "" || certificationType === "-- Select --" || certificationType === "Personnel" || recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}>
+                        <select value={equipmentType} onChange={(e) => setEquipmentType(e.target.value)} disabled={(certificationType !== "Equipment" && recordType === "New Record") || (recordType === "Existing Record")}
+                            className={`w-full border p-2 rounded bg-white ${certificationType === "" || certificationType === "-- Select --" || certificationType === "Personnel" || recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}>
                             <option value="">-- Select --</option>
 
                             {(recordType === "New Record") ? lookups?.equipmentType.map((item, index) => (
@@ -326,7 +337,7 @@ function EquipmentQAForm({ lookups }) {
                                     {item["Equipment Type"]}
                                 </option>
                             )) :
-                            <option>{equipmentType}</option>}
+                                <option>{equipmentType}</option>}
                         </select>
                     </div>
 
@@ -335,7 +346,7 @@ function EquipmentQAForm({ lookups }) {
                             Certification Names
                         </label>
                         <select
-                            multiple 
+                            multiple
                             value={selectedCertifications}
                             onChange={(e) => {
                                 const options = Array.from(e.target.selectedOptions);
@@ -345,23 +356,23 @@ function EquipmentQAForm({ lookups }) {
                             disabled={(recordType === "New Record") ? false : true}
                         > {/*where [Certification Type] = 'Equipment' And Discontinued = 0;*/}
                             {lookups?.certNames
-                            .filter(item => {
-                                if (certificationType === "" || certificationType === "-- Select --") return false;
+                                .filter(item => {
+                                    if (certificationType === "" || certificationType === "-- Select --") return false;
 
-                                return(
-                                    item["Certification Type"] === certificationType && 
-                                    item["Discontinued"] === 0 &&
-                                    (
-                                        certificationType !== "Equipment" || equipmentType === "-- Select --" || equipmentType === "Personnel" ||
-                                        item[equipmentType] === 1
-                                    )
-                                );
-                            })
-                            .map((item, index) => (
-                                <option key={`certNames-${index}`} value={item["Certification Names"]}>
-                                {item["Certification Names"]}
-                                </option>
-                            ))}
+                                    return (
+                                        item["Certification Type"] === certificationType &&
+                                        item["Discontinued"] === 0 &&
+                                        (
+                                            certificationType !== "Equipment" || equipmentType === "-- Select --" || equipmentType === "Personnel" ||
+                                            item[equipmentType] === 1
+                                        )
+                                    );
+                                })
+                                .map((item, index) => (
+                                    <option key={`certNames-${index}`} value={item["Certification Names"]}>
+                                        {item["Certification Names"]}
+                                    </option>
+                                ))}
                         </select>
                     </div>
                 </div>
@@ -372,21 +383,21 @@ function EquipmentQAForm({ lookups }) {
                         <label className="block text-sm mb-1 font-bold">
                             {(certificationType === "Equipment") ? "Equipment Name" : "Employee Name"}
                         </label>
-                        <select value={equipmentName} onChange={(e) => setEquipmentName(e.target.value)} disabled={certificationType === "" || certificationType === "-- Select --" || recordType === "Existing Record"} 
-                        className={`w-full border p-2 rounded bg-white ${certificationType === "" || certificationType === "-- Select --" || recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}>
+                        <select value={equipmentName} onChange={(e) => setEquipmentName(e.target.value)} disabled={certificationType === "" || certificationType === "-- Select --" || recordType === "Existing Record"}
+                            className={`w-full border p-2 rounded bg-white ${certificationType === "" || certificationType === "-- Select --" || recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`}>
                             <option value="">-- Select --</option>
-                            
-                            {recordType === "Existing Record" ? <option>{equipmentName}</option> : certificationType === "Equipment" ? 
-                            lookups?.equipmentName.map((item, index) => (
-                                <option key={`equipmentName-${index}`} value={item["Equipment Name"]}>
-                                    {item["Equipment Name"]}
-                                </option>
-                            ))
-                            : lookups?.users.map((item, index) => (
-                                <option key={`userName-${index}`} value={item["UserName"]}>
-                                    {item["UserName"]}
-                                </option>
-                            ))}
+
+                            {recordType === "Existing Record" ? <option>{equipmentName}</option> : certificationType === "Equipment" ?
+                                lookups?.equipmentName.map((item, index) => (
+                                    <option key={`equipmentName-${index}`} value={item["Equipment Name"]}>
+                                        {item["Equipment Name"]}
+                                    </option>
+                                ))
+                                : lookups?.users.map((item, index) => (
+                                    <option key={`userName-${index}`} value={item["UserName"]}>
+                                        {item["UserName"]}
+                                    </option>
+                                ))}
                         </select>
                     </div>
 
@@ -505,7 +516,7 @@ function DataIssuesForm({ lookups }) {
             assigned,
             IssueID
         };
-        
+
         // try {
         //     const res = await fetch(`${API}/api/verificationResult/upload-issue`, {
         //         method: "POST",
@@ -534,7 +545,7 @@ function DataIssuesForm({ lookups }) {
                 </label>
                 <select value={recordType} onChange={(e) => {
                     setRecordType(e.target.value);
-                    
+
                     setCategory("");
                     setCollectionTask("");
                     setEquipmentName("");
@@ -563,27 +574,27 @@ function DataIssuesForm({ lookups }) {
                             Collection Issue ID
                         </label>
                         <select value={IssueID}
-                        onChange={(e) => {
-                            const IssuesID = e.target.value;
-                            setIssueID(IssuesID);
+                            onChange={(e) => {
+                                const IssuesID = e.target.value;
+                                setIssueID(IssuesID);
 
-                            const record = lookups?.issueList.find(
-                                item => item.IssuesID === IssuesID
-                            );
+                                const record = lookups?.issueList.find(
+                                    item => item.IssuesID === IssuesID
+                                );
 
-                            if (!record) return;
-                            
-                            setCategory(record["Category"]);
-                            setAssigned(record["AssignedTo"]);
-                            setFollowUp(record["Follow Up"]);
-                            setCollectionTask(record["Data Collection Task"]);
-                            setStatus(record["Status"]);
-                            setClosedDate(record["ClosedDate"] ? record["ClosedDate"].split("T")[0] : "");
-                            setEquipmentName(record["Equipment Name"]);
-                            setPriority(record["Priority"]);
-                            setComments(record["Comments"]);
-                        }}
-                        className={`w-full border p-2 rounded bg-white`}>
+                                if (!record) return;
+
+                                setCategory(record["Category"]);
+                                setAssigned(record["AssignedTo"]);
+                                setFollowUp(record["Follow Up"]);
+                                setCollectionTask(record["Data Collection Task"]);
+                                setStatus(record["Status"]);
+                                setClosedDate(record["ClosedDate"] ? record["ClosedDate"].split("T")[0] : "");
+                                setEquipmentName(record["Equipment Name"]);
+                                setPriority(record["Priority"]);
+                                setComments(record["Comments"]);
+                            }}
+                            className={`w-full border p-2 rounded bg-white`}>
                             <option value="">-- Select --</option>
 
                             {filteredIssueList.slice().sort((a, b) => b.IssuesID.localeCompare(a.IssuesID)).map((item, index) => (
@@ -672,7 +683,7 @@ function DataIssuesForm({ lookups }) {
                             setClosedDate("");
                             setEquipmentName("");
                         }
-                        
+
                         (value === "Computer" || value === "Vehicle/Equipment") ? setFollowUp("Needed") : setFollowUp("Not Needed");
                     }} className={`w-full border p-2 rounded bg-white ${recordType === "Existing Record" ? "opacity-50 cursor-not-allowed" : ""}`} disabled={recordType === "Existing Record" ? true : false}>
                         <option value="">-- Select --</option>
@@ -681,8 +692,8 @@ function DataIssuesForm({ lookups }) {
                             <option key={`category-${index}`} value={category}>
                                 {category}
                             </option>
-                        )) : 
-                        <option>{category}</option>}
+                        )) :
+                            <option>{category}</option>}
                     </select>
                 </div>
 
@@ -699,12 +710,12 @@ function DataIssuesForm({ lookups }) {
                             <option key={`userName-${index}`} value={item.UserName}>
                                 {item.UserName}
                             </option>
-                        )) : 
-                        assignedUserOptions.map((item, index) => (
-                            <option key={`userName-${index}`} value={item}>
-                                {item}
-                            </option>
-                        ))}
+                        )) :
+                            assignedUserOptions.map((item, index) => (
+                                <option key={`userName-${index}`} value={item}>
+                                    {item}
+                                </option>
+                            ))}
                     </select>
                 </div>
 
@@ -724,7 +735,7 @@ function DataIssuesForm({ lookups }) {
                         ))}
                     </select>
                 </div>
-                
+
                 {/* Second row */}
                 <div className="space-y-6">
                     <label className="block text-sm mb-1 font-bold">
@@ -740,7 +751,7 @@ function DataIssuesForm({ lookups }) {
                                 {item["Collection Task Type"]}
                             </option>
                         )) :
-                        <option>{collectionTask}</option>}
+                            <option>{collectionTask}</option>}
                     </select>
                 </div>
 
@@ -783,10 +794,10 @@ function DataIssuesForm({ lookups }) {
                                 {item["Equipment Name"]}
                             </option>
                         )) :
-                        <option>{equipmentName}</option>}
+                            <option>{equipmentName}</option>}
                     </select>
                 </div>
-                
+
                 <div className="space-y-6">
                     <label className="block text-sm mb-1 font-bold">
                         Priority
@@ -800,8 +811,8 @@ function DataIssuesForm({ lookups }) {
                             <option key={`priority-${index}`} value={item.Priority}>
                                 {item.Priority}
                             </option>
-                        )) : 
-                        <option>{priority}</option>}
+                        )) :
+                            <option>{priority}</option>}
                     </select>
                 </div>
             </div>
@@ -810,7 +821,7 @@ function DataIssuesForm({ lookups }) {
                 <label className="block text-sm mb-1 font-bold">
                     Comments
                 </label>
-                <textarea value={comments} onChange={(e) => {setComments(e.target.value)}} className="w-180 border p-2 rounded h-32 bg-white" />
+                <textarea value={comments} onChange={(e) => { setComments(e.target.value) }} className="w-180 border p-2 rounded h-32 bg-white" />
             </div>
 
             {/* Button */}

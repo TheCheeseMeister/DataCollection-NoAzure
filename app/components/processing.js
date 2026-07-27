@@ -1703,12 +1703,6 @@ function RideQualityChecker() {
 
     const importPathway = async () => {
         const createMPAdjustmentTable = (rawPayAdjustment) => {
-
-            // Equivalent to:
-            // SELECT Route, LaneID, Direction, MPFrom, MPTo
-            // FROM tblRawPayAdjustment
-            // ORDER BY Route, Direction, LaneID, MPFrom
-
             const sortedData = [...rawPayAdjustment].sort((a, b) => {
                 const routeCompare =
                     String(a.Route).localeCompare(String(b.Route));
@@ -1736,78 +1730,42 @@ function RideQualityChecker() {
 
 
             const mpAdjustments = [];
-
             let sectionID = 1;
-
             let i = 0;
 
             while (i < sortedData.length) {
-
                 const firstRow = sortedData[i];
-
                 const Rte = firstRow.Route;
                 const Dir = firstRow.Direction;
                 const LaneID = firstRow.LaneID;
-
                 const MPStart = Number(firstRow.MPFrom);
 
                 let MPEnd = Number(firstRow.MPTo);
-
-
-                // Look ahead to find adjacent sections
                 let j = i + 1;
 
                 while (j < sortedData.length) {
-
                     const currentRow = sortedData[j];
                     const previousRow = sortedData[j - 1];
 
-                    const MP1 =
-                        Math.round(Number(previousRow.MPFrom) * 100) / 100;
+                    const MP1 = Math.round(Number(previousRow.MPFrom) * 100) / 100;
+                    const MP2 = Math.round(Number(currentRow.MPFrom) * 100) / 100;
 
-                    const MP2 =
-                        Math.round(Number(currentRow.MPFrom) * 100) / 100;
-
-
-                    const sameGroup =
-                        currentRow.Route === Rte &&
-                        currentRow.Direction === Dir &&
-                        currentRow.LaneID === LaneID;
-
-
-                    const closeEnough =
-                        Math.round((MP2 - MP1) * 100) / 100 <= 0.5;
+                    const sameGroup = currentRow.Route === Rte && currentRow.Direction === Dir && currentRow.LaneID === LaneID;
+                    const closeEnough = Math.round((MP2 - MP1) * 100) / 100 <= 0.5;
 
 
                     if (sameGroup && closeEnough) {
-
-                        // Extend section
                         MPEnd = Number(currentRow.MPTo);
-
                         j++;
-
                     } else {
-
                         break;
                     }
                 }
 
-
-                // Find an existing section that overlaps
-                // the current mileage range
                 const existingSection = mpAdjustments.find(section => {
-
                     if (section.Rte !== Rte) {
                         return false;
                     }
-
-                    // Access checks:
-                    //
-                    // (MPStart >= section.MPStart AND MPStart < section.MPEnd)
-                    // OR
-                    // (MPEnd <= section.MPEnd AND MPEnd > section.MPStart)
-                    // OR
-                    // (MPStart <= section.MPStart AND MPEnd >= section.MPEnd)
 
                     const overlaps =
                         (
@@ -1823,27 +1781,13 @@ function RideQualityChecker() {
                             MPEnd >= section.MPEnd
                         );
 
-                    // Access also checks:
-                    // Left(LaneID, 1) = Direction
-                    //
-                    // But the inserted LaneID is:
-                    // Dir & "-L" & LaneID
-
-                    const sameDirection =
-                        String(section.LaneID).startsWith(`${Dir}-`);
-
+                    const sameDirection = String(section.LaneID).startsWith(`${Dir}-`);
                     return overlaps && sameDirection;
                 });
 
-
                 if (existingSection) {
-
-                    // Reuse existing SectionID
                     sectionID = existingSection.SectionID;
-
                 } else {
-
-                    // Find highest existing SectionID
                     const maxSectionID =
                         mpAdjustments.length > 0
                             ? Math.max(
@@ -1854,8 +1798,6 @@ function RideQualityChecker() {
                     sectionID = maxSectionID + 1;
                 }
 
-
-                // Create tblMPAdjustments record
                 const newSection = {
                     Route: Rte,
                     Direction: Dir,
@@ -1866,17 +1808,6 @@ function RideQualityChecker() {
                 };
 
                 mpAdjustments.push(newSection);
-
-
-                // Equivalent to:
-                //
-                // UPDATE tblRawPayAdjustment
-                // SET SectionID = sectionID
-                // WHERE Route = Rte
-                // AND Direction = Dir
-                // AND LaneID = LaneID
-                // AND MPFrom >= MPStart
-                // AND MPTo <= MPEnd
 
                 rawPayAdjustment.forEach(row => {
                     if (
@@ -1890,11 +1821,8 @@ function RideQualityChecker() {
                     }
                 });
 
-
-                // Move to next unprocessed section
                 i = j;
             }
-
 
             return {
                 rawPayAdjustment,

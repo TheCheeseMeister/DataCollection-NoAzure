@@ -86,7 +86,9 @@ export async function updateExistingEquipment(payload) {
     .update({
       "Verification Result": payload.verificationResult,
       "Comments": payload.comments,
-      "Date Certification": payload.dateCert
+      "Date Certification": payload.dateCert,
+      "Modified By": "Eli",
+      "Modified Date": new Date().toISOString()
     })
     .eq("QAID", payload.Existing_QAID)
     .select();
@@ -187,7 +189,7 @@ export async function updateExistingIssue(payload) {
       "Comments": payload["comments"],
       "Status": payload["status"],
       "ClosedDate": payload["closedDate"],
-      "Follow Up": payload["followUp"]
+      "Follow Up": payload["followUp"],
     })
     .eq("IssuesID", payload["IssueID"])
     .select();

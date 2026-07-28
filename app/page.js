@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from "react";
+
+import Login from "./components/login";
 import Home from "./components/home";
 import Test from "./components/test";
 import Collection from "./components/collection";
@@ -8,17 +10,35 @@ import Processing from "./components/processing";
 import QAReview from "./components/qareview";
 
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
-import { AllCommunityModule } from 'ag-grid-community';
-import { AgGridProvider } from 'ag-grid-react';
+import { AllCommunityModule } from "ag-grid-community";
+import { AgGridProvider } from "ag-grid-react";
 
 const modules = [AllCommunityModule];
-
 const queryClient = new QueryClient();
 
 export default function Tabs() {
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [activeTab, setActiveTab] = useState("home");
   const [isOnline, setIsOnline] = useState(true);
+
+  const getPageTitle = () => {
+    switch (activeTab) {
+      case "test":
+        return "Equipment QA";
+      case "network":
+        return "Network Collection";
+      case "process":
+        return "Processing Checker";
+      case "qa":
+        return "QA Review";
+      case "skid":
+        return "Skid Processing";
+      default:
+        return "";
+    }
+  };
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -35,16 +55,9 @@ export default function Tabs() {
     };
   }, []);
 
-  const tabs = [
-    { id: "home", label: "Home", content: <Home /> },
-    { id: "test", label: "Equipment QA", content: <Test /> },
-    { id: "network", label: "Network Collection", content: <Collection /> },
-    { id: "process", label: "Processing Checker", content: <Processing /> },
-    { id: "qa", label: "QA Review", content: <QAReview /> },
-    { id: "skid", label: "Skid Processing", content: "Skid" },
-  ];
-
-  const [activeTab, setActiveTab] = useState(tabs[0].id);
+  if (!loggedIn) {
+    return <Login onLogin={() => setLoggedIn(true)} />;
+  }
 
   return (
     <>
@@ -57,41 +70,56 @@ export default function Tabs() {
       <AgGridProvider modules={modules}>
         <QueryClientProvider client={queryClient}>
           <div className="bg-gray-400 min-h-screen flex flex-col">
-            {/* Header */}
+            {/* Main Header */}
             <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
               <img src='/DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
               <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
             </div>
 
-            {/* Body */}
-            <div className="flex flex-1 mb-2">
-              {/* Tabs */}
-              <div className="items-start flex flex-col gap-x-10 bg-gray-400">
-                {tabs.map((tab) => (
-                  <button className=
-                    {
-                      `text-black border-2 text-center w-42 h-12 
-                  ${activeTab === tab.id ? "bg-blue-200 bold hover:bg-blue-300" : "bg-white hover:bg-gray-300"}`
-                    }
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    style={{
-                      fontWeight: activeTab === tab.id ? "bold" : "normal",
-                    }}>
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+            <div className="flex-1 bg-white m-2">
+				{activeTab === "home" ? (
+				  <Home setActiveTab={setActiveTab} />
+				) : (
 
-              {/* Content */}
-              <div className="bg-white w-full ml-2 mr-2">
-                {tabs.find(t => t.id === activeTab)?.content}
-              </div>
-            </div>
-          </div>
+				  <div className="h-full flex flex-col">
+					{/* Navigation Bar */}
+					<div className="flex items-center justify-between bg-gray-100 border-b border-gray-300 px-5 h-12">
+					  <button
+						onClick={() => setActiveTab("home")}
+						className="text-blue-700 font-semibold hover:underline"
+					  >
+						← Home
+					  </button>
+
+					  <h2 className="text-xl font-bold">
+						{getPageTitle()}
+					  </h2>
+
+					  <div className="w-20"></div>
+					</div>
+
+					{/* Application */}
+					<div className="flex-1 overflow-hidden">
+					  {activeTab === "test" && <Test />}
+					  {activeTab === "network" && <Collection />}
+					  {activeTab === "process" && <Processing />}
+					  {activeTab === "qa" && <QAReview />}
+					  {activeTab === "skid" && (
+						<div className="p-6">
+						  <h2 className="text-2xl font-bold">
+							Skid Processing
+						  </h2>
+						</div>
+					  )}
+					</div>
+				  </div>
+				)}
+			  </div>
+			</div>
+		  
           <ReactQueryDevtools initialIsOpen={false} />
         </QueryClientProvider>
       </AgGridProvider>
-    </>
+</>
   );
 }

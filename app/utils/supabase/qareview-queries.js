@@ -90,8 +90,8 @@ export async function getAssignmentData() {
     const { data: matchingUsers } = await supabase
         .from("tblUsers")
         .select("UserID, UserName")
-        .eq("activeUser", 1)
-        .eq("QAReviewer", 1)
+        .eq("activeUser", true)
+        .eq("QAReviewer", true)
         .eq("Unit", "PD")
         .eq("Region", "C");
 

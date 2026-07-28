@@ -568,7 +568,7 @@ function CollectionForm() {
   }))
 
   return (
-    <div className="flex flex-col items-center mt-20 min-h-[90vh] gap-4">
+    <div className="h-full flex flex-col items-start justify-center gap-4">
       {/* Warning label */}
       <div className="mr-200">
         <div className="text-sm font-semibold text-red-600 bg-white p-1 mb-4">
@@ -727,7 +727,7 @@ function RerunsForm() {
   };
 
   return (
-    <div className="flex flex-col items-start justify-center min-h-[90vh] gap-4">
+    <div className="h-full flex flex-col items-start justify-center gap-4">
       <div className="w-3/4 mx-auto flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">

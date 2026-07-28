@@ -15,11 +15,16 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { AllCommunityModule } from "ag-grid-community";
 import { AgGridProvider } from "ag-grid-react";
 
+import { getUser } from "./utils/supabase/login-queries";
+
 const modules = [AllCommunityModule];
 const queryClient = new QueryClient();
 
 export default function Tabs() {
   const [loggedIn, setLoggedIn] = useState(false);
+  const [userInfo, setUserInfo] = useState(false);
+  const [checkingLogin, setCheckingLogin] = useState(true);
+
   const [activeTab, setActiveTab] = useState("home");
   const [isOnline, setIsOnline] = useState(true);
 
@@ -41,6 +46,32 @@ export default function Tabs() {
   };
 
   useEffect(() => {
+    const restoreLogin = async () => {
+      const savedUserID = localStorage.getItem("userID");
+
+      if (savedUserID) {
+        try {
+          const user = await getUser(savedUserID);
+
+          if (user) {
+            setUserInfo(user);
+            setLoggedIn(true);
+          } else {
+            localStorage.removeItem("userID");
+          }
+        } catch (error) {
+          console.error(error);
+          localStorage.removeItem("userID");
+        }
+      }
+
+      setCheckingLogin(false);
+    };
+
+    restoreLogin();
+  }, []);
+
+  useEffect(() => {
     setIsOnline(navigator.onLine);
 
     const handleOnline = () => setIsOnline(true);
@@ -55,12 +86,37 @@ export default function Tabs() {
     };
   }, []);
 
+  const handleLogout = () => {
+    setUserInfo(false);
+    setLoggedIn(false);
+    setActiveTab("home");
+
+    // Gets rid of past user login info
+    localStorage.removeItem("userID");
+  };
+
+  if (checkingLogin) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-gray-200">
+        <p className="text-black text-xl">Loading...</p>
+      </div>
+    );
+  }
+
   if (!loggedIn) {
-    return <Login onLogin={() => setLoggedIn(true)} />;
+    return (
+      <Login
+        onLogin={(user) => {
+          setUserInfo(user);
+          setLoggedIn(true);
+          localStorage.setItem("userID", user.UserID);
+        }}
+      />
+    );
   }
 
   return (
-    <>
+    <div className="h-screen flex flex-col overflow-hidden">
       <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isOnline ? "max-h-0 opacity-0 -translate-y-full" : "max-h-12 opacity-100 translate-y-0"}`}>
         <div className="bg-red-600 text-white text-center p-2 font-bold">
           You are currently offline. Database operations are unavailable.
@@ -70,10 +126,36 @@ export default function Tabs() {
       <AgGridProvider modules={modules}>
         <QueryClientProvider client={queryClient}>
           <div className="bg-gray-400 h-screen flex flex-col">
-            {/* Main Header */}
-            <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
-              <img src='/DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
-              <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
+            <div className="relative flex items-center justify-center bg-blue-500 h-16 w-full mb-2">
+              {/* NJDOT Header */}
+              <div className="flex items-center gap-4">
+                <img
+                  src="/DataCollection-NoAzure/images/njdot_img.png"
+                  className="h-14 w-auto"
+                />
+                <h1 className="text-4xl text-white font-bold">
+                  NJDOT Data Collection
+                </h1>
+              </div>
+
+              {/* User Info */}
+              <div className="absolute right-4 flex items-center gap-4 text-white">
+                <div className="text-right">
+                  <div className="font-bold">
+                    {userInfo?.UserID}
+                  </div>
+                  <div className="text-sm">
+                    {new Date().toLocaleDateString()}
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="bg-red-600 hover:bg-red-700 px-3 py-2 rounded text-white font-semibold"
+                >
+                  Log Out
+                </button>
+              </div>
             </div>
 
             <div className="flex-1 bg-white m-2 text-black">
@@ -120,6 +202,6 @@ export default function Tabs() {
           <ReactQueryDevtools initialIsOpen={false} />
         </QueryClientProvider>
       </AgGridProvider>
-    </>
+    </div>
   );
 }

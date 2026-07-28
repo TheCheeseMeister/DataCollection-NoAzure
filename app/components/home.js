@@ -12,35 +12,35 @@ export default function Home({ setActiveTab }) {
 
         <button
           onClick={() => setActiveTab("test")}
-          className="bg-blue-600 text-white p-4"
+          className="rounded bg-blue-600 text-white p-4"
         >
           Equipment QA
         </button>
 
         <button
           onClick={() => setActiveTab("network")}
-          className="bg-blue-600 text-white p-4"
+          className="rounded bg-blue-600 text-white p-4"
         >
           Network Collection
         </button>
 
         <button
           onClick={() => setActiveTab("process")}
-          className="bg-blue-600 text-white p-4"
+          className="rounded bg-blue-600 text-white p-4"
         >
           Processing Checker
         </button>
 
         <button
           onClick={() => setActiveTab("qa")}
-          className="bg-blue-600 text-white p-4"
+          className="rounded bg-blue-600 text-white p-4"
         >
           QA Review
         </button>
 
         <button
           onClick={() => setActiveTab("skid")}
-          className="bg-blue-600 text-white p-4"
+          className="rounded bg-blue-600 text-white p-4"
         >
           Skid Processing
         </button>

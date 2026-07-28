@@ -1023,7 +1023,7 @@ function TenthMileProcessor() {
     };
 
     return (
-        <div className="p-4">
+        <div className="h-full flex flex-col p-4 overflow-hidden">
             <div className="flex items-center gap-3">
                 <label className="text-sm font-bold text-black">
                     File:
@@ -1063,7 +1063,7 @@ function TenthMileProcessor() {
                 </div>
             </div>
 
-            <div className="mt-4 space-y-6">
+            <div className="mt-2 space-y-6">
                 <div className="grid grid-cols-4 gap-4">
                     <ResultGrid
                         title="Currently Loaded Section Info"

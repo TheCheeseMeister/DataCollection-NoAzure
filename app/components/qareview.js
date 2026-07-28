@@ -1246,7 +1246,7 @@ function ReviewForm() {
                 </div>}
             </div>
 
-            <div className="ag-theme-alpine w-full h-[250px] mb-8">
+            <div className="ag-theme-alpine w-full h-[224px] mb-8">
                 <label className="block font-semibold text-sm mb-1">
                     Tenth Mile Sections
                 </label>

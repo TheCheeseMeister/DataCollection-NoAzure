@@ -1063,7 +1063,7 @@ function TenthMileProcessor() {
                 </div>
             </div>
 
-            <div className="mt-6 space-y-6">
+            <div className="mt-4 space-y-6">
                 <div className="grid grid-cols-4 gap-4">
                     <ResultGrid
                         title="Currently Loaded Section Info"
@@ -3000,7 +3000,7 @@ function RideQualityChecker() {
     return (
         <div className="w-full p-4">
             {/* Top Row */}
-            <div className="flex flex-col xl:flex-row gap-8 p-4 w-full">
+            <div className="flex flex-col xl:flex-row gap-8 p-4 w-5/6 mx-auto">
                 <div className="flex-shrink-0 space-y-4">
                     {/* Test Vehicle */}
                     <div className="flex items-center gap-3">
@@ -3371,7 +3371,7 @@ function RideQualityChecker() {
             </div>
 
             {/* Options Row */}
-            <div className="flex flex-wrap items-center gap-6 mt-6">
+            <div className="flex flex-wrap items-center gap-6 mt-6 w-3/4 mx-auto">
                 <label className="flex items-center gap-2 text-m text-black cursor-pointer">
                     <input
                         type="checkbox"
@@ -3487,9 +3487,9 @@ function RideQualityChecker() {
             </div>
 
             {/* Chart Row */}
-            <div className="flex flex-col xl:flex-row items-start gap-6 mt-6 w-full">
+            <div className="flex flex-col xl:flex-row items-start gap-6 mt-6 w-5/6 mx-auto">
                 {/* LEFT - Chart */}
-                <div className="flex-1 min-w-[500px] max-w-[1388px]">
+                <div className="flex-1 min-w-[500px]">
                     <div className="border border-gray-500 rounded bg-white p-2 w-full h-[600px]">
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart

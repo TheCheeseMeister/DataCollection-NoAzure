@@ -2,9 +2,9 @@
 
 export default function Home({ setActiveTab }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full py-20">
+    <div className="flex flex-col items-center h-full py-20">
 
-      <h2 className="text-4xl font-bold mb-10">
+      <h2 className="text-4xl text-black font-bold mb-10">
         Welcome to NJDOT Data Collection
       </h2>
 

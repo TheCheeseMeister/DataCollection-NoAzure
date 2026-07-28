@@ -586,7 +586,7 @@ function AssignmentForm() {
     }
 
     return (
-        <div className="w-1/5 ml-180 mt-10">
+        <div className="w-1/5 mx-auto mt-10 relative right-24">
             <div className="grid grid-cols-[minmax(250px,3fr)_120px_160px_80px] font-semibold text-black">
                 <div className="p-2 text-right">Review Reason</div>
                 <div className="p-2 text-center">Miles</div>
@@ -734,11 +734,11 @@ function AssignmentForm() {
                         </label>
                     </div>
 
-                    <button className="border rounded px-3 py-2 bg-blue-500 hover:bg-blue-800" onClick={assignReviewers}>
+                    <button className="border rounded px-3 py-2 bg-blue-500 hover:bg-blue-800 text-white" onClick={assignReviewers}>
                         Assign to Reviewer(s)
                     </button>
 
-                    <button className="border rounded px-3 py-2 bg-blue-500 hover:bg-blue-800" onClick={removeMilesFromReviewers}>
+                    <button className="border rounded px-3 py-2 bg-blue-500 hover:bg-blue-800 text-white" onClick={removeMilesFromReviewers}>
                         Remove Assigned Mileage
                     </button>
                 </div>

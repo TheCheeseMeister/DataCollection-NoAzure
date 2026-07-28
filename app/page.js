@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 import Login from "./components/login";
 import Home from "./components/home";
@@ -69,57 +69,57 @@ export default function Tabs() {
 
       <AgGridProvider modules={modules}>
         <QueryClientProvider client={queryClient}>
-          <div className="bg-gray-400 min-h-screen flex flex-col">
+          <div className="bg-gray-400 h-screen flex flex-col">
             {/* Main Header */}
             <div className="mx-auto flex justify-center items-center bg-blue-500 h-16 w-full mb-2 gap-4">
               <img src='/DataCollection-NoAzure/images/njdot_img.png' className="h-14 w-auto" />
               <h1 className="text-4xl text-white font-bold">NJDOT Data Collection</h1>
             </div>
 
-            <div className="flex-1 bg-white m-2">
-				{activeTab === "home" ? (
-				  <Home setActiveTab={setActiveTab} />
-				) : (
+            <div className="flex-1 bg-white m-2 text-black">
+              {activeTab === "home" ? (
+                <Home setActiveTab={setActiveTab} />
+              ) : (
 
-				  <div className="h-full flex flex-col">
-					{/* Navigation Bar */}
-					<div className="flex items-center justify-between bg-gray-100 border-b border-gray-300 px-5 h-12">
-					  <button
-						onClick={() => setActiveTab("home")}
-						className="text-blue-700 font-semibold hover:underline"
-					  >
-						← Home
-					  </button>
+                <div className="h-full flex flex-col">
+                  {/* Navigation Bar */}
+                  <div className="flex items-center justify-between bg-gray-100 border-b border-gray-300 px-5 h-12">
+                    <button
+                      onClick={() => setActiveTab("home")}
+                      className="text-blue-700 font-semibold hover:underline"
+                    >
+                      ← Home
+                    </button>
 
-					  <h2 className="text-xl font-bold">
-						{getPageTitle()}
-					  </h2>
+                    <h2 className="text-xl font-bold">
+                      {getPageTitle()}
+                    </h2>
 
-					  <div className="w-20"></div>
-					</div>
+                    <div className="w-20"></div>
+                  </div>
 
-					{/* Application */}
-					<div className="flex-1 overflow-hidden">
-					  {activeTab === "test" && <Test />}
-					  {activeTab === "network" && <Collection />}
-					  {activeTab === "process" && <Processing />}
-					  {activeTab === "qa" && <QAReview />}
-					  {activeTab === "skid" && (
-						<div className="p-6">
-						  <h2 className="text-2xl font-bold">
-							Skid Processing
-						  </h2>
-						</div>
-					  )}
-					</div>
-				  </div>
-				)}
-			  </div>
-			</div>
-		  
+                  {/* Application */}
+                  <div className="flex-1 overflow-hidden">
+                    {activeTab === "test" && <Test />}
+                    {activeTab === "network" && <Collection />}
+                    {activeTab === "process" && <Processing />}
+                    {activeTab === "qa" && <QAReview />}
+                    {activeTab === "skid" && (
+                      <div className="p-6">
+                        <h2 className="text-2xl font-bold">
+                          Skid Processing
+                        </h2>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <ReactQueryDevtools initialIsOpen={false} />
         </QueryClientProvider>
       </AgGridProvider>
-</>
+    </>
   );
 }

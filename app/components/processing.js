@@ -3184,7 +3184,7 @@ function RideQualityChecker() {
                 </div>
 
                 {/* Dynatest Limits */}
-                <div className="min-w-0">
+                <div className="">
                     <div className="text-xs font-bold text-black">
                         Dynatest Worksheet Limits - Compare with Range of mileposts
                         <br />

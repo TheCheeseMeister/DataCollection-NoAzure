@@ -568,7 +568,7 @@ function CollectionForm() {
   }))
 
   return (
-    <div className="h-full flex flex-col items-start justify-center gap-4">
+    <div className="h-full flex flex-col items-center gap-4 pt-16">
       {/* Warning label */}
       <div className="mr-200">
         <div className="text-sm font-semibold text-red-600 bg-white p-1 mb-4">

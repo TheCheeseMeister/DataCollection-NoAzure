@@ -21,7 +21,7 @@ export default function qareview() {
     const [activeTab, setActiveTab] = useState(tabs[0].id);
 
     return (
-        <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex flex-col h-full min-h-0 overflow-hidden">
             <div className="text-black flex max-w-screen bg-gray-400 h-12">
                 {tabs.map((tab) => (
                     <button className=
@@ -40,7 +40,7 @@ export default function qareview() {
             </div>
 
             {/* Forms */}
-            <div className="bg-[#D1EAF0] w-full h-full overflow-y-auto">
+            <div className="bg-[#D1EAF0] w-full h-full flex-1 min-h-0 overflow-y-auto">
                 {activeTab === "reports" && <ReportsForm />}
                 {activeTab === "assignment" && <AssignmentForm />}
                 {activeTab === "review" && <ReviewForm />}
@@ -251,7 +251,7 @@ function ReportsForm() {
                 <div className="col-span-3 flex flex-col">
                     <div className="w-full p-4 border bg-gray-300">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="md:col-span-2 space-y-3">
+                            <div className="md:col-span-2 space-y-3 w-fit">
                                 {/* First Row */}
                                 <div className="flex items-center gap-4 text-black">
                                     <div className="flex items-center gap-2 whitespace-nowrap">
@@ -283,7 +283,7 @@ function ReportsForm() {
 
                                 {/* Second Row */}
                                 <div className="flex items-center gap-4 text-black">
-                                    <span className="ml-48.5 w-40 font-medium  whitespace-nowrap">To be Reviewed:</span>
+                                    <span className="ml-48.5 w-30 font-medium  whitespace-nowrap">To be Reviewed:</span>
                                     <input className="w-24 border px-2 bg-white" value={milesReviewed?.Outstanding ?? "N/A"} readOnly />
 
                                     <span className="ml-6">North:</span>

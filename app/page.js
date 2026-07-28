@@ -158,7 +158,7 @@ export default function Tabs() {
               </div>
             </div>
 
-            <div className="flex-1 bg-white m-2 text-black">
+            <div className="flex-1 bg-white m-2 text-black overflow-hidden">
               {activeTab === "home" ? (
                 <Home setActiveTab={setActiveTab} />
               ) : (
